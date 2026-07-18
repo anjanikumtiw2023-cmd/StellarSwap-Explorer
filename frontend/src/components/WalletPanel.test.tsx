@@ -9,7 +9,7 @@ function wallet(overrides: Partial<WalletViewModel> = {}): WalletViewModel {
     status: 'disconnected', address: null, shortAddress: '', network: null,
     message: 'Connect Freighter to load your Testnet account.', horizonStatus: 'idle',
     xlmBalance: null, connect: vi.fn(), retryBalance: vi.fn(),
-    usdcBalance: null, trustlineStatus: 'idle', refreshAccount: vi.fn(), ...overrides,
+    usdcBalance: null, spendableXlm: null, spendableUsdc: null, receivableUsdc: null, trustlineStatus: 'idle', refreshAccount: vi.fn(), ...overrides,
   }
 }
 

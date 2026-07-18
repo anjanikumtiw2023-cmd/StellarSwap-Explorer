@@ -11,7 +11,7 @@ vi.mock('../services/trustline', () => ({ addUsdcTrustline: (...args: unknown[])
 
 function wallet(): WalletViewModel { return {
   status: 'connected', address: 'GTEST', shortAddress: 'GTEST', network: 'TESTNET', message: '', horizonStatus: 'success', xlmBalance: '10', usdcBalance: null,
-  trustlineStatus: 'missing', connect: vi.fn(), retryBalance: vi.fn(), refreshAccount: vi.fn(async () => undefined),
+  spendableXlm: '8', spendableUsdc: null, receivableUsdc: null, trustlineStatus: 'missing', connect: vi.fn(), retryBalance: vi.fn(), refreshAccount: vi.fn(async () => undefined),
 } }
 
 describe('TrustlineStatus', () => {

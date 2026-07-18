@@ -7,7 +7,7 @@ import { SwapCard } from './SwapCard'
 vi.mock('../hooks/useOrderbook', () => ({ useOrderbook: () => ({ status: 'empty', book: null, message: 'No offers are available for this pair.', retry: vi.fn() }) }))
 const wallet: WalletViewModel = {
   status: 'connected', address: 'GTEST', shortAddress: 'GTEST', network: 'TESTNET', message: '', horizonStatus: 'success',
-  xlmBalance: '10', usdcBalance: '4', trustlineStatus: 'present', connect: vi.fn(), retryBalance: vi.fn(), refreshAccount: vi.fn(),
+  xlmBalance: '10', usdcBalance: '4', spendableXlm: '8', spendableUsdc: '4', receivableUsdc: '1000', trustlineStatus: 'present', connect: vi.fn(), retryBalance: vi.fn(), refreshAccount: vi.fn(),
 }
 
 describe('SwapCard asset selection', () => {
@@ -23,6 +23,6 @@ describe('SwapCard asset selection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Switch swap direction' }))
     expect((screen.getByLabelText('From asset') as HTMLSelectElement).value).toContain('credit:USDC')
     expect(screen.getByLabelText('To asset')).toHaveValue('native:XLM')
-    expect(screen.getByText('Balance: 4 USDC')).toBeInTheDocument()
+    expect(screen.getByText(/Total: 4 · Spendable: 4 USDC/)).toBeInTheDocument()
   })
 })

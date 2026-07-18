@@ -31,7 +31,7 @@ export function WalletPanel({ wallet }: { wallet: WalletViewModel }) {
         </div>
         {wallet.horizonStatus === 'unfunded' && <p className="balance-help">This account does not exist on Testnet yet. Fund it with Friendbot, then retry.</p>}
         {wallet.horizonStatus === 'error' && <><p className="balance-help">Horizon could not load this account. Your wallet remains safe.</p><button type="button" className="text-button" onClick={() => void wallet.retryBalance()}>Retry balance</button></>}
-        {wallet.horizonStatus === 'success' && <p className="balance-help success-copy"><span className="status-dot" />Updated from Testnet Horizon</p>}
+        {wallet.horizonStatus === 'success' && <p className="balance-help success-copy"><span className="status-dot" />Spendable after reserve, liabilities and fee: {wallet.spendableXlm ?? '0'} XLM</p>}
       </article>
     </section>
   )

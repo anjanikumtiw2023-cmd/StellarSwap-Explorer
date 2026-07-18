@@ -12,6 +12,9 @@ export interface WalletViewModel {
   horizonStatus: HorizonStatus
   xlmBalance: string | null
   usdcBalance: string | null
+  spendableXlm: string | null
+  spendableUsdc: string | null
+  receivableUsdc: string | null
   trustlineStatus: TrustlineStatus
   connect: () => Promise<void>
   retryBalance: () => Promise<void>
@@ -19,5 +22,5 @@ export interface WalletViewModel {
 }
 
 export type AccountBalanceResult =
-  | { kind: 'funded'; xlmBalance: string; usdcBalance: string | null; trustlineStatus: 'present' | 'missing' | 'unauthorized' }
+  | { kind: 'funded'; xlmBalance: string; usdcBalance: string | null; spendableXlm: string; spendableUsdc: string | null; receivableUsdc: string | null; trustlineStatus: 'present' | 'missing' | 'unauthorized' }
   | { kind: 'unfunded' }
