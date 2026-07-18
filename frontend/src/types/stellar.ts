@@ -1,5 +1,7 @@
 export type WalletStatus = 'checking' | 'disconnected' | 'connecting' | 'connected' | 'not-installed' | 'wrong-network' | 'error'
 export type HorizonStatus = 'idle' | 'loading' | 'success' | 'unfunded' | 'error'
+export type TrustlineStatus = 'idle' | 'loading' | 'present' | 'missing' | 'unauthorized' | 'unfunded' | 'error'
+export type TrustlineActionStatus = 'idle' | 'preparing' | 'awaiting-signature' | 'submitting' | 'confirmed' | 'rejected' | 'failed'
 
 export interface WalletViewModel {
   status: WalletStatus
@@ -9,10 +11,13 @@ export interface WalletViewModel {
   message: string
   horizonStatus: HorizonStatus
   xlmBalance: string | null
+  usdcBalance: string | null
+  trustlineStatus: TrustlineStatus
   connect: () => Promise<void>
   retryBalance: () => Promise<void>
+  refreshAccount: () => Promise<void>
 }
 
 export type AccountBalanceResult =
-  | { kind: 'funded'; xlmBalance: string }
+  | { kind: 'funded'; xlmBalance: string; usdcBalance: string | null; trustlineStatus: 'present' | 'missing' | 'unauthorized' }
   | { kind: 'unfunded' }

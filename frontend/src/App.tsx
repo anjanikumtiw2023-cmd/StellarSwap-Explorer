@@ -1,6 +1,7 @@
 import './App.css'
 import { SwapCard } from './components/SwapCard'
 import { WalletPanel } from './components/WalletPanel'
+import { TrustlineStatus } from './components/TrustlineStatus'
 import { stellarConfig } from './config/stellar'
 import { useFreighterWallet } from './wallet/useFreighterWallet'
 
@@ -27,12 +28,12 @@ function App() {
         <section className="intro" aria-labelledby="page-title">
           <p className="eyebrow">Stellar Classic DEX · Testnet</p>
           <h1 id="page-title">Explore swaps with confidence.</h1>
-          <p>Connect Freighter to inspect your Testnet account and prepare a swap. Execution arrives in the next phase.</p>
+          <p>Inspect official Testnet assets, live Classic DEX liquidity, and read-only swap estimates.</p>
         </section>
 
         <div className="dashboard-grid">
-          <WalletPanel wallet={wallet} />
-          <SwapCard connected={wallet.status === 'connected'} />
+          <section className="wallet-column"><WalletPanel wallet={wallet} /><TrustlineStatus wallet={wallet} /></section>
+          <section className="market-column"><SwapCard wallet={wallet} /></section>
         </div>
 
         <section className="connection-strip" aria-label="Service status">

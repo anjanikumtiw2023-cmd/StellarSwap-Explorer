@@ -1,26 +1,36 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { TESTNET_USDC, XLM, otherAsset, type AssetConfig } from '../config/assets'
+import { useOrderbook } from '../hooks/useOrderbook'
+import { calculateQuote, slippagePercentToBps } from '../services/quote'
+import type { WalletViewModel } from '../types/stellar'
+import { AssetSelector } from './AssetSelector'
+import { OrderbookPanel } from './OrderbookPanel'
+import { SlippageSelector, type Slippage } from './SlippageSelector'
+import { SwapQuote } from './SwapQuote'
 
-export function SwapCard({ connected }: { connected: boolean }) {
-  const [reversed, setReversed] = useState(false)
-  const from = reversed ? 'USDC' : 'XLM'
-  const to = reversed ? 'XLM' : 'USDC'
-  return (
+export function SwapCard({ wallet }: { wallet: WalletViewModel }) {
+  const [from, setFrom] = useState<AssetConfig>(XLM)
+  const [to, setTo] = useState<AssetConfig>(TESTNET_USDC)
+  const [amount, setAmount] = useState('')
+  const [slippage, setSlippage] = useState<Slippage>('0.5')
+  const market = useOrderbook(from, to)
+  const quote = useMemo(() => calculateQuote(amount, market.book?.bids ?? [], slippagePercentToBps(slippage)), [amount, market.book, slippage])
+  const balance = (asset: AssetConfig) => asset.type === 'native' ? wallet.xlmBalance : wallet.usdcBalance
+  const selectFrom = (asset: AssetConfig) => { setFrom(asset); if (asset.id === to.id) setTo(otherAsset(asset)) }
+  const selectTo = (asset: AssetConfig) => { setTo(asset); if (asset.id === from.id) setFrom(otherAsset(asset)) }
+  const switchDirection = () => { setFrom(to); setTo(from) }
+
+  return <>
     <section className="card swap-card" aria-labelledby="swap-title">
-      <div className="card-heading"><div><p className="card-kicker">Classic DEX preview</p><h2 id="swap-title">Swap assets</h2></div><span className="phase-pill">Phase 1</span></div>
-      <div className="asset-field">
-        <label htmlFor="from-amount">From</label>
-        <div><input id="from-amount" type="number" min="0" step="any" inputMode="decimal" placeholder="0.00" /><button type="button" className="asset-select" aria-label={`From asset ${from}`}>{from}<span>⌄</span></button></div>
-        <small>{connected ? 'Balance shown in wallet panel' : 'Connect wallet to view balance'}</small>
-      </div>
-      <button className="switch-button" type="button" onClick={() => setReversed((value) => !value)} aria-label="Switch swap direction">⇅</button>
-      <div className="asset-field">
-        <label htmlFor="to-amount">To</label>
-        <div><input id="to-amount" type="text" placeholder="0.00" readOnly /><button type="button" className="asset-select" aria-label={`To asset ${to}`}>{to}<span>⌄</span></button></div>
-        <small>Estimated amount</small>
-      </div>
-      <dl className="quote-details"><div><dt>Quote</dt><dd>Available next phase</dd></div><div><dt>Slippage</dt><dd>Not configured</dd></div></dl>
+      <div className="card-heading"><div><p className="card-kicker">Classic DEX preview</p><h2 id="swap-title">Swap assets</h2></div><span className="phase-pill">Phase 2</span></div>
+      <div className="asset-field"><AssetSelector id="from-asset" label="From asset" value={from} excluded={to} onChange={selectFrom} /><div><input aria-label="Swap amount" value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" placeholder="0.00" /><span className="asset-code">{from.code}</span></div><small>Balance: {balance(from) ?? '—'} {from.code}</small></div>
+      <button className="switch-button" type="button" onClick={switchDirection} aria-label="Switch swap direction">⇅</button>
+      <div className="asset-field"><AssetSelector id="to-asset" label="To asset" value={to} excluded={from} onChange={selectTo} /><div><input aria-label="Estimated output" value={quote?.expectedOutput ?? ''} placeholder="0.00" readOnly /><span className="asset-code">{to.code}</span></div><small>Balance: {balance(to) ?? '—'} {to.code}</small></div>
+      <SlippageSelector value={slippage} onChange={setSlippage} />
+      <SwapQuote quote={quote} outputCode={to.code} />
       <button className="review-button" type="button" disabled>Review Swap</button>
-      <p className="phase-notice"><span aria-hidden="true">i</span> Swap execution will be enabled in the next phase. No transaction can be submitted yet.</p>
+      <p className="phase-notice"><span aria-hidden="true">i</span> Read-only estimate. Swap execution will be enabled in Phase 3.</p>
     </section>
-  )
+    <OrderbookPanel market={market} />
+  </>
 }

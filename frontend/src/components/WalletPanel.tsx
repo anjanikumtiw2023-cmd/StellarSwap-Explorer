@@ -5,7 +5,7 @@ export function WalletPanel({ wallet }: { wallet: WalletViewModel }) {
   const title = wallet.status === 'wrong-network' ? 'Wrong network' : connected ? 'Account connected' : 'Wallet not connected'
 
   return (
-    <section className="wallet-column" aria-labelledby="wallet-title">
+    <section className="wallet-panel" aria-labelledby="wallet-title">
       <article className={`card wallet-card status-${wallet.status}`}>
         <div className="card-heading">
           <div><p className="card-kicker">Wallet status</p><h2 id="wallet-title">{title}</h2></div>

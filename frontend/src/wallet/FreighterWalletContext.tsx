@@ -2,7 +2,7 @@ import { WatchWalletChanges, getAddress, getNetwork, isConnected, requestAccess 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { isTestnetNetwork } from '../config/stellar'
 import { loadXlmBalance } from '../services/horizon'
-import type { HorizonStatus, WalletStatus, WalletViewModel } from '../types/stellar'
+import type { HorizonStatus, TrustlineStatus, WalletStatus, WalletViewModel } from '../types/stellar'
 import { shortenAddress } from '../utils/address'
 import { FreighterWalletContext } from './context'
 
@@ -18,27 +18,30 @@ export function FreighterWalletProvider({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState('Checking for Freighter…')
   const [horizonStatus, setHorizonStatus] = useState<HorizonStatus>('idle')
   const [xlmBalance, setXlmBalance] = useState<string | null>(null)
+  const [usdcBalance, setUsdcBalance] = useState<string | null>(null)
+  const [trustlineStatus, setTrustlineStatus] = useState<TrustlineStatus>('idle')
   const activeAddress = useRef<string | null>(null)
 
   const refreshBalance = useCallback(async (account = activeAddress.current) => {
     if (!account) return
     setHorizonStatus('loading')
+    setTrustlineStatus('loading')
     try {
       const result = await loadXlmBalance(account)
       if (result.kind === 'unfunded') {
-        setXlmBalance(null); setHorizonStatus('unfunded')
+        setXlmBalance(null); setUsdcBalance(null); setHorizonStatus('unfunded'); setTrustlineStatus('unfunded')
       } else {
-        setXlmBalance(result.xlmBalance); setHorizonStatus('success')
+        setXlmBalance(result.xlmBalance); setUsdcBalance(result.usdcBalance); setTrustlineStatus(result.trustlineStatus); setHorizonStatus('success')
       }
     } catch {
-      setXlmBalance(null); setHorizonStatus('error')
+      setXlmBalance(null); setUsdcBalance(null); setHorizonStatus('error'); setTrustlineStatus('error')
     }
   }, [])
 
   const applyWallet = useCallback((nextAddress: string, nextNetwork: string, passphrase?: string) => {
     setNetwork(nextNetwork)
     if (!isTestnetNetwork(nextNetwork, passphrase)) {
-      activeAddress.current = null; setAddress(nextAddress || null); setXlmBalance(null); setHorizonStatus('idle')
+      activeAddress.current = null; setAddress(nextAddress || null); setXlmBalance(null); setUsdcBalance(null); setTrustlineStatus('idle'); setHorizonStatus('idle')
       setStatus('wrong-network'); setMessage('Switch Freighter to Stellar Testnet to continue.')
       return
     }
@@ -94,8 +97,9 @@ export function FreighterWalletProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<WalletViewModel>(() => ({
     status, address, shortAddress: address ? shortenAddress(address) : '', network, message,
-    horizonStatus, xlmBalance, connect, retryBalance: () => refreshBalance(),
-  }), [status, address, network, message, horizonStatus, xlmBalance, connect, refreshBalance])
+    horizonStatus, xlmBalance, usdcBalance, trustlineStatus, connect,
+    retryBalance: () => refreshBalance(), refreshAccount: () => refreshBalance(),
+  }), [status, address, network, message, horizonStatus, xlmBalance, usdcBalance, trustlineStatus, connect, refreshBalance])
 
   return <FreighterWalletContext.Provider value={value}>{children}</FreighterWalletContext.Provider>
 }

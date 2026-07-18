@@ -20,6 +20,16 @@ Frontend Phase 1 provides:
 - Friendly disconnected, loading, funded, unfunded, wrong-network, error, and retry states.
 - A non-transactional swap preview. Review and submission are intentionally disabled.
 
+Frontend Phase 2 adds verified Testnet asset and market support:
+
+- Native XLM and official Testnet USDC only. The USDC issuer is `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`.
+- Account trustline detection distinguishes missing, active, unauthorized/frozen, unfunded, loading, and Horizon error states.
+- A missing USDC trustline can be created as a Classic `changeTrust` transaction signed by Freighter and submitted to Testnet Horizon. No secret key is requested or handled.
+- Live XLM/USDC orderbook bids and asks refresh from Horizon every ten seconds, with best prices, spread, depth, and explicit empty/error states.
+- Read-only quotes consume actual visible ask levels using decimal-safe integer arithmetic and show average price, price impact, insufficient depth, selectable preview slippage, and estimated minimum received.
+
+Quotes are estimates, not executable swaps or guaranteed prices. The application never invents liquidity: an empty or shallow Testnet orderbook is shown as empty or insufficient rather than replaced with sample values.
+
 No contracts are deployed yet, and the example environment file intentionally contains empty contract IDs.
 
 ## Local development
@@ -54,9 +64,8 @@ stellar contract build
 ## Future phases
 
 - Load supported pairs from deployed Pair Registry configuration.
-- Add Classic DEX/path-payment quotes and configurable slippage.
 - Add transaction review, Freighter signing, and swap submission.
 - Add trustline workflows where explicitly approved by the user.
 - Deploy contracts and record user-authorized analytics after verified settlement.
 
-Phase 1 does not create trustlines, submit swaps, trade on orderbooks, deploy contracts, or request secret keys.
+Phase 2 can submit only an explicitly approved USDC trustline transaction. It does not submit swaps, place orderbook offers, deploy contracts, record analytics, or request secret keys.
