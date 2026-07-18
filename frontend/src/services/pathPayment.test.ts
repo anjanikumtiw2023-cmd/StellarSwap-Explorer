@@ -2,7 +2,7 @@ import { Account, Networks, StrKey, Transaction, type TransactionBuilder } from 
 import { describe, expect, it, vi } from 'vitest'
 import { TESTNET_USDC, XLM } from '../config/assets'
 import type { SwapExecutionStatus } from '../types/swap'
-import { executePathPayment, horizonFailureMessage, pathPaymentOperationArgs, type PathPaymentDeps } from './pathPayment'
+import { executePathPayment, extractConfirmedDestinationAmount, horizonFailureMessage, pathPaymentOperationArgs, type PathPaymentDeps } from './pathPayment'
 
 const address = StrKey.encodeEd25519PublicKey(new Uint8Array(32))
 const input = { address, from: XLM, to: TESTNET_USDC, amount: '1.0000000', destMin: '1.9000000' }
@@ -31,6 +31,11 @@ describe('PathPaymentStrictSend execution', () => {
   it('maps Horizon result codes to friendly messages', () => {
     const error = { response: { data: { extras: { result_codes: { operations: ['op_under_destmin'] } } } } }
     expect(horizonFailureMessage(error)).toContain('slippage-protected minimum')
+  })
+  it('parses the operation destination amount, never a post-swap account balance', () => {
+    const record = { type: 'path_payment_strict_send', from: address, to: address, source_amount: '1.0000000', asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: TESTNET_USDC.issuer!, amount: '2.1933814' }
+    expect(extractConfirmedDestinationAmount([record], input)).toBe('2.1933814')
+    expect(extractConfirmedDestinationAmount([{ ...record, asset_code: 'FAKE' }], input)).toBeNull()
   })
   it('rebuilds and re-signs exactly once for tx_bad_seq', async () => {
     let calls = 0; const d = deps({ submit: vi.fn(async (_tx: ReturnType<typeof TransactionBuilder.fromXDR>) => { calls += 1; if (calls === 1) throw { response: { data: { extras: { result_codes: { transaction: 'tx_bad_seq' } } } } }; return { hash: 'fresh' } }) })

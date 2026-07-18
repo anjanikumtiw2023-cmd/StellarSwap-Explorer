@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { TESTNET_USDC, XLM, otherAsset, type AssetConfig } from '../config/assets'
 import { useOrderbook } from '../hooks/useOrderbook'
-import { calculateQuote, slippagePercentToBps } from '../services/quote'
+import { slippagePercentToBps } from '../services/quote'
 import type { WalletViewModel } from '../types/stellar'
 import { AssetSelector } from './AssetSelector'
 import { OrderbookPanel } from './OrderbookPanel'
@@ -12,6 +12,7 @@ import { validateSwap, maxSpendable } from '../services/swapValidation'
 import { ReviewSwapDialog } from './ReviewSwapDialog'
 import { TransactionStatus } from './TransactionStatus'
 import { SessionSwapHistory } from './SessionSwapHistory'
+import { useDirectQuote } from '../hooks/useDirectQuote'
 
 export function SwapCard({ wallet }: { wallet: WalletViewModel }) {
   const [from, setFrom] = useState<AssetConfig>(XLM)
@@ -19,13 +20,14 @@ export function SwapCard({ wallet }: { wallet: WalletViewModel }) {
   const [amount, setAmount] = useState('')
   const [slippage, setSlippage] = useState<Slippage>('0.5')
   const market = useOrderbook(from, to)
-  const quote = useMemo(() => calculateQuote(amount, market.book?.bids ?? [], slippagePercentToBps(slippage)), [amount, market.book, slippage])
+  const directQuote = useDirectQuote(from, to, amount, slippagePercentToBps(slippage), market.book?.bestBid)
+  const quote = directQuote.quote
   const balance = (asset: AssetConfig) => asset.type === 'native' ? wallet.xlmBalance : wallet.usdcBalance
   const selectFrom = (asset: AssetConfig) => { setFrom(asset); if (asset.id === to.id) setTo(otherAsset(asset)) }
   const selectTo = (asset: AssetConfig) => { setTo(asset); if (asset.id === from.id) setFrom(otherAsset(asset)) }
   const switchDirection = () => { setFrom(to); setTo(from) }
   const execution = useSwapExecution(wallet, market.retry, () => setAmount(''))
-  const draft = { from, to, amount, slippage, quote, quotedAt: market.book?.refreshedAt ?? null }
+  const draft = { from, to, amount, slippage, quote, quotedAt: directQuote.quotedAt }
   const validation = validateSwap({ wallet, ...draft, inProgress: execution.inProgress })
   const spendable = maxSpendable(wallet, from)
 

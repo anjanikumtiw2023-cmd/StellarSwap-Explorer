@@ -13,7 +13,7 @@ export type PathPaymentDeps = {
   sign: typeof signTransaction
   network: typeof getNetwork
   submit: (transaction: ReturnType<typeof TransactionBuilder.fromXDR>) => Promise<{ hash: string }>
-  findReceived: (hash: string) => Promise<string | null>
+  findReceived: (hash: string, input: PathPaymentInput) => Promise<string | null>
 }
 
 function sdkAsset(asset: AssetConfig): Asset {
@@ -47,17 +47,23 @@ export function horizonFailureMessage(error: unknown): string {
   if (codes?.transaction === 'tx_insufficient_fee') return 'The network fee is no longer sufficient. Review and rebuild the swap.'
   return 'Horizon could not submit the Testnet swap. No fake success was recorded.'
 }
+type ConfirmedPathOperation = { type: string; amount?: string; source_amount?: string; asset_type?: string; asset_code?: string; asset_issuer?: string; from?: string; to?: string }
+export function extractConfirmedDestinationAmount(records: ConfirmedPathOperation[], input: PathPaymentInput): string | null {
+  const operation = records.find((record) => record.type === 'path_payment_strict_send' && record.from === input.address && record.to === input.address && record.source_amount === input.amount)
+  if (!operation?.amount) return null
+  const destinationMatches = input.to.type === 'native' ? operation.asset_type === 'native' : operation.asset_code === input.to.code && operation.asset_issuer === input.to.issuer
+  return destinationMatches ? operation.amount : null
+}
 
 function defaults(): PathPaymentDeps {
   const server = new Horizon.Server(stellarConfig.horizonUrl)
   return {
     loadAccount: (address) => server.loadAccount(address), sign: signTransaction, network: getNetwork,
     submit: (transaction) => server.submitTransaction(transaction),
-    findReceived: async (hash) => {
+    findReceived: async (hash, input) => {
       try {
         const records = await server.operations().forTransaction(hash).call()
-        const operation = records.records.find((record) => record.type === 'path_payment_strict_send') as unknown as { amount?: string }
-        return operation?.amount ?? null
+        return extractConfirmedDestinationAmount(records.records as unknown as ConfirmedPathOperation[], input)
       } catch { return null }
     },
   }
@@ -79,7 +85,7 @@ export async function executePathPayment(input: PathPaymentInput, progress: Exec
       if (signed.signerAddress !== input.address) throw new Error('wrong_signer')
       progress('submitting', 'Submitting the signed swap to Stellar Testnet…')
       const result = await deps.submit(TransactionBuilder.fromXDR(signed.signedTxXdr, stellarConfig.networkPassphrase))
-      return { hash: result.hash, receivedAmount: await deps.findReceived(result.hash) }
+      return { hash: result.hash, receivedAmount: await deps.findReceived(result.hash, input) }
     } catch (error) {
       if (isBadSequence(error) && attempt === 0) continue
       if (isTimedOut(error)) progress('timed-out', 'The transaction timed out before submission. Review a fresh quote and try again.')

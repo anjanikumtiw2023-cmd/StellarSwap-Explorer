@@ -26,7 +26,7 @@ Frontend Phase 2 adds verified Testnet asset and market support:
 - Account trustline detection distinguishes missing, active, unauthorized/frozen, unfunded, loading, and Horizon error states.
 - A missing USDC trustline can be created as a Classic `changeTrust` transaction signed by Freighter and submitted to Testnet Horizon. No secret key is requested or handled.
 - Live XLM/USDC orderbook bids and asks refresh from Horizon every ten seconds, with best prices, spread, depth, and explicit empty/error states.
-- Read-only quotes consume actual visible ask levels using decimal-safe integer arithmetic and show average price, price impact, insufficient depth, selectable preview slippage, and estimated minimum received.
+- Read-only and pre-submit quotes use Horizon's direct strict-send path result, matching the orderbook and liquidity-pool sources available to `PathPaymentStrictSend`; the separate orderbook panel still shows visible bids and asks only. Decimal-safe arithmetic protects `destMin` and minimum-received calculations.
 
 Quotes are estimates, not executable swaps or guaranteed prices. The application never invents liquidity: an empty or shallow Testnet orderbook is shown as empty or insufficient rather than replaced with sample values.
 

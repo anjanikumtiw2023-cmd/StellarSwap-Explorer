@@ -6,15 +6,16 @@ import { calculateQuote } from '../services/quote'
 import type { WalletViewModel } from '../types/stellar'
 import { useSwapExecution } from './useSwapExecution'
 
-const { executeMock, fetchMock } = vi.hoisted(() => ({ executeMock: vi.fn(), fetchMock: vi.fn() }))
+const { executeMock, fetchMock, directFetchMock } = vi.hoisted(() => ({ executeMock: vi.fn(), fetchMock: vi.fn(), directFetchMock: vi.fn() }))
 const book = normalizeOrderbook({ bids: [{ price: '2', amount: '100' }], asks: [{ price: '2.1', amount: '100' }] }, XLM, TESTNET_USDC)
 vi.mock('../services/orderbook', async (original) => ({ ...await original<typeof import('../services/orderbook')>(), fetchOrderbook: fetchMock }))
+vi.mock('../services/directQuote', () => ({ fetchDirectQuote: directFetchMock }))
 vi.mock('../services/pathPayment', () => ({ executePathPayment: (...args: unknown[]) => executeMock(...args) }))
 const wallet: WalletViewModel = { status: 'connected', address: 'GTEST', shortAddress: 'GTEST', network: 'TESTNET', message: '', horizonStatus: 'success', xlmBalance: '10', usdcBalance: '5', spendableXlm: '8', spendableUsdc: '5', receivableUsdc: '1000', trustlineStatus: 'present', connect: vi.fn(), retryBalance: vi.fn(), refreshAccount: vi.fn(async () => undefined) }
 const draft = { from: XLM, to: TESTNET_USDC, amount: '1', slippage: '0.5' as const, quote: calculateQuote('1', book.bids, 50n), quotedAt: new Date() }
 
 describe('useSwapExecution', () => {
-  beforeEach(() => { vi.clearAllMocks(); fetchMock.mockResolvedValue({ ...book, refreshedAt: new Date() }); executeMock.mockResolvedValue({ hash: 'confirmedhash', receivedAmount: '2.0000000' }) })
+  beforeEach(() => { vi.clearAllMocks(); fetchMock.mockResolvedValue({ ...book, refreshedAt: new Date() }); directFetchMock.mockResolvedValue(draft.quote); executeMock.mockResolvedValue({ hash: 'confirmedhash', receivedAmount: '2.0000000' }) })
   it('refreshes balances/market, clears amount, and adds successful history', async () => {
     const refresh = vi.fn(); const clear = vi.fn(); const { result } = renderHook(() => useSwapExecution(wallet, refresh, clear))
     await act(() => result.current.requestReview(draft)); expect(result.current.review).not.toBeNull()

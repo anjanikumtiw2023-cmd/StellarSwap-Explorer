@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
 import type { AssetConfig } from '../config/assets'
 import { fetchOrderbook } from '../services/orderbook'
-import { calculateQuote, slippagePercentToBps } from '../services/quote'
+import { slippagePercentToBps } from '../services/quote'
+import { fetchDirectQuote } from '../services/directQuote'
 import { isQuoteFresh, validateSwap } from '../services/swapValidation'
 import type { QuoteResult } from '../types/market'
 import type { ConfirmedSwap, ReviewDetails, SwapExecutionStatus } from '../types/swap'
@@ -24,7 +25,8 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
 
   const authoritativeQuote = useCallback(async (draft: Draft) => {
     const book = await fetchOrderbook(draft.from, draft.to)
-    return { quote: calculateQuote(draft.amount, book.bids, slippagePercentToBps(draft.slippage)), quotedAt: book.refreshedAt }
+    const quote = await fetchDirectQuote(draft.from, draft.to, draft.amount, slippagePercentToBps(draft.slippage), book.bestBid)
+    return { quote, quotedAt: quote ? new Date() : book.refreshedAt }
   }, [])
 
   const requestReview = useCallback(async (draft: Draft) => {

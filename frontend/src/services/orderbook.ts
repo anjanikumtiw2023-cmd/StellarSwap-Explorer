@@ -1,7 +1,7 @@
 import type { AssetConfig } from '../config/assets'
 import { stellarConfig } from '../config/stellar'
 import type { OrderbookLevel, OrderbookSnapshot } from '../types/market'
-import { formatDecimal, parseDecimal, SCALE } from '../utils/decimal'
+import { divideScaled, formatDecimal, parseDecimal, SCALE } from '../utils/decimal'
 
 type RawLevel = { price: string; amount: string }
 type RawBook = { bids?: RawLevel[]; asks?: RawLevel[] }
@@ -19,9 +19,12 @@ export function normalizeLevels(levels: RawLevel[] | undefined): OrderbookLevel[
     return priceScaled && amountScaled ? [{ ...level, priceScaled, amountScaled }] : []
   })
 }
+export function normalizeBidLevels(levels: RawLevel[] | undefined): OrderbookLevel[] {
+  return normalizeLevels(levels).map((level) => ({ ...level, amountScaled: divideScaled(level.amountScaled, level.priceScaled), amount: formatDecimal(divideScaled(level.amountScaled, level.priceScaled)) }))
+}
 
 export function normalizeOrderbook(raw: RawBook, selling: AssetConfig, buying: AssetConfig): OrderbookSnapshot {
-  const bids = normalizeLevels(raw.bids).sort((a, b) => a.priceScaled === b.priceScaled ? 0 : a.priceScaled > b.priceScaled ? -1 : 1)
+  const bids = normalizeBidLevels(raw.bids).sort((a, b) => a.priceScaled === b.priceScaled ? 0 : a.priceScaled > b.priceScaled ? -1 : 1)
   const asks = normalizeLevels(raw.asks).sort((a, b) => a.priceScaled === b.priceScaled ? 0 : a.priceScaled < b.priceScaled ? -1 : 1)
   const bid = bids[0]?.priceScaled ?? null; const ask = asks[0]?.priceScaled ?? null
   const spread = bid && ask && ask >= bid ? formatDecimal(ask - bid, 7, 7) : null
