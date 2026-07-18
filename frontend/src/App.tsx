@@ -1,121 +1,49 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
 import './App.css'
+import { SwapCard } from './components/SwapCard'
+import { WalletPanel } from './components/WalletPanel'
+import { stellarConfig } from './config/stellar'
+import { useFreighterWallet } from './wallet/useFreighterWallet'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const wallet = useFreighterWallet()
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="app-shell">
+      <header className="site-header">
+        <a className="brand" href="#main" aria-label="StellarSwap Explorer home">
+          <span className="brand-mark" aria-hidden="true">S</span>
+          <span><strong>StellarSwap</strong><small>Explorer</small></span>
+        </a>
+        <div className="header-actions">
+          <span className="network-badge"><span className="status-dot" />Testnet</span>
+          {wallet.address && <span className="header-address">{wallet.shortAddress}</span>}
+          <button className="connect-button" type="button" onClick={() => void wallet.connect()} disabled={wallet.status === 'connecting'}>
+            {wallet.status === 'connecting' ? 'Connecting…' : wallet.address ? 'Wallet connected' : 'Connect Freighter'}
+          </button>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
+      <main id="main">
+        <section className="intro" aria-labelledby="page-title">
+          <p className="eyebrow">Stellar Classic DEX · Testnet</p>
+          <h1 id="page-title">Explore swaps with confidence.</h1>
+          <p>Connect Freighter to inspect your Testnet account and prepare a swap. Execution arrives in the next phase.</p>
+        </section>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+        <div className="dashboard-grid">
+          <WalletPanel wallet={wallet} />
+          <SwapCard connected={wallet.status === 'connected'} />
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+        <section className="connection-strip" aria-label="Service status">
+          <div><span className="status-dot" /><span><small>Network</small><strong>Stellar Testnet</strong></span></div>
+          <div><span className="status-dot" /><span><small>Horizon connection</small><strong>{wallet.horizonStatus === 'error' ? 'Unavailable' : 'Ready'}</strong></span></div>
+          <div className="endpoint"><small>Endpoint</small><strong>{stellarConfig.horizonUrl.replace('https://', '')}</strong></div>
+        </section>
+      </main>
+
+      <footer>Built for Stellar Testnet · No secret keys are requested or stored.</footer>
+    </div>
   )
 }
 
