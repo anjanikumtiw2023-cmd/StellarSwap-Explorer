@@ -37,13 +37,13 @@ export async function fetchUserStats(address: string, deps = defaults()): Promis
   return decodeUserStats(await simulateRead(address, stellarConfig.swapAnalyticsContractId, 'get_user_stats', [new (await import('@stellar/stellar-sdk')).Address(address).toScVal()], deps))
 }
 export async function analyticsRecordExists(input: Pick<AnalyticsRecordInput, 'user' | 'transactionHash'>, deps = defaults()): Promise<boolean> {
-  try {
-    await simulateRead(input.user, stellarConfig.swapAnalyticsContractId, 'get_swap', [new (await import('@stellar/stellar-sdk')).Address(input.user).toScVal(), nativeToScVal(hashToBytes(input.transactionHash), { type: 'bytes' })], deps)
-    return true
-  } catch (error) {
-    if (error instanceof Error && error.message === 'invalid_configuration') throw error
-    return false
-  }
+  ensureConfigured()
+  const { Address } = await import('@stellar/stellar-sdk')
+  const transaction = invocation(await deps.server.getAccount(input.user), stellarConfig.swapAnalyticsContractId, 'get_swap', [new Address(input.user).toScVal(), nativeToScVal(hashToBytes(input.transactionHash), { type: 'bytes' })])
+  const result = await deps.server.simulateTransaction(transaction)
+  if (rpc.Api.isSimulationSuccess(result) && result.result) return true
+  if (rpc.Api.isSimulationError(result) && /Error\(Contract,\s*#?3\)/.test(result.error)) return false
+  throw new Error('analytics_lookup_failed')
 }
 
 export async function submitAnalytics(input: AnalyticsRecordInput, progress: SorobanProgress, deps = defaults()): Promise<{ hash: string; explorerUrl: string; duplicate: boolean }> {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { TESTNET_USDC, XLM, otherAsset, type AssetConfig } from '../config/assets'
 import { useOrderbook } from '../hooks/useOrderbook'
 import { slippagePercentToBps } from '../services/quote'
@@ -23,13 +23,14 @@ export function SwapCard({ wallet }: { wallet: WalletViewModel }) {
   const [amount, setAmount] = useState('')
   const [slippage, setSlippage] = useState<Slippage>('0.5')
   const [statsRefresh, setStatsRefresh] = useState(0)
+  const refreshStats = useCallback(() => setStatsRefresh((value) => value + 1), [])
   const registry = usePairRegistry(wallet.status === 'connected' ? wallet.address : null)
   const analytics = useAnalyticsStats(wallet.status === 'connected' ? wallet.address : null, statsRefresh)
   const market = useOrderbook(from, to)
   const directQuote = useDirectQuote(from, to, amount, slippagePercentToBps(slippage), market.book?.bestBid)
   const quote = directQuote.quote
   const balance = (asset: AssetConfig) => asset.type === 'native' ? wallet.xlmBalance : wallet.usdcBalance
-  const execution = useSwapExecution(wallet, market.retry, () => setAmount(''), registry.canSwap, () => setStatsRefresh((value) => value + 1))
+  const execution = useSwapExecution(wallet, market.retry, () => setAmount(''), registry.canSwap, refreshStats)
   const { resetDraftState, clearTransientMessages } = execution
   const changeAmount = (value: string) => { resetDraftState(); setAmount(value) }
   const selectFrom = (asset: AssetConfig) => { resetDraftState(); setFrom(asset); if (asset.id === to.id) setTo(otherAsset(asset)) }
@@ -56,7 +57,7 @@ export function SwapCard({ wallet }: { wallet: WalletViewModel }) {
       <p className="phase-notice"><span aria-hidden="true">i</span> TESTNET educational swap. These assets have no real monetary value.</p>
     </section>
     <OrderbookPanel market={market} />
-    <AnalyticsPanel analytics={analytics} />
+    <AnalyticsPanel analytics={analytics} address={wallet.status === 'connected' ? wallet.address : null} onStatsRefresh={refreshStats} />
     <SessionSwapHistory swaps={execution.history} retryAnalytics={(hash) => void execution.retryAnalytics(hash)} retryConfirmation={(hash) => void execution.retryConfirmation(hash)} retryDisabled={execution.inProgress} />
     {execution.review && wallet.address && <ReviewSwapDialog review={execution.review} address={wallet.address} status={execution.status} message={execution.reviewMessage} onCancel={execution.cancelReview} onConfirm={() => void execution.confirm()} />}
   </>
