@@ -54,6 +54,9 @@ Swap Analytics stores aggregates and records keyed by `(user, transaction_hash)`
 ### Test Results
 <img width="932" height="950" alt="Screenshot 2026-07-19 171829" src="https://github.com/user-attachments/assets/d7ab88ce-7f97-4268-9a37-83da39859149" />
 
+## Demo Video
+
+[Watch the 1–2 minute project demo]https://drive.google.com/file/d/1c2qCGNLUDVPM_vpMgV0YSUV1RyGVPpAv/view?usp=drive_link
 
 `XLM_USDC` is active with a 500 bps maximum and official Testnet USDC issuer `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`. Swap Analytics calls Pair Registry to require the pair to remain active.
 
