@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AssetConfig } from '../config/assets'
 import { fetchOrderbook } from '../services/orderbook'
 import { slippagePercentToBps } from '../services/quote'
@@ -12,6 +12,7 @@ import { parseDecimal } from '../utils/decimal'
 import { decimalToI128, PAIR_ID } from '../services/contractValues'
 import { friendlySorobanError, submitAnalytics } from '../services/soroban'
 import type { AnalyticsRecordInput, AnalyticsStatus } from '../types/contracts'
+import type { PathPaymentInput } from '../services/pathPayment'
 
 type Draft = { from: AssetConfig; to: AssetConfig; amount: string; slippage: Slippage; quote: QuoteResult | null; quotedAt: Date | null }
 function materialChange(oldQuote: QuoteResult, newQuote: QuoteResult): boolean {
@@ -27,6 +28,8 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
   const [analyticsStatus, setAnalyticsStatus] = useState<AnalyticsStatus>('idle')
   const [analyticsMessage, setAnalyticsMessage] = useState('')
   const pendingAnalytics = useRef(new Map<string, AnalyticsRecordInput>())
+  const pendingConfirmation = useRef(new Map<string, PathPaymentInput>())
+  const confirmationController = useRef<AbortController | null>(null)
   const inFlight = useRef(false)
   const progress = (next: SwapExecutionStatus, nextMessage: string) => { setStatus(next); setMessage(nextMessage) }
   const clearTransientMessages = useCallback(() => {
@@ -34,6 +37,7 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
     setStatus('idle'); setMessage(''); setReviewMessage(''); setAnalyticsStatus('idle'); setAnalyticsMessage('')
   }, [])
   const resetDraftState = useCallback(() => { if (!inFlight.current) { setReview(null); clearTransientMessages() } }, [clearTransientMessages])
+  useEffect(() => () => confirmationController.current?.abort(), [])
 
   const recordAnalytics = useCallback(async (input: AnalyticsRecordInput) => {
     setAnalyticsStatus('preparing'); setAnalyticsMessage('Swap confirmed; preparing analytics recording…')
@@ -87,11 +91,14 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
         return
       }
       const transaction = await import('../services/pathPayment')
-      const result = await transaction.executePathPayment({ address: wallet.address!, from: review.from, to: review.to, amount: review.amount, destMin: fresh.quote.minimumReceived }, reviewProgress)
+      confirmationController.current?.abort(); const controller = new AbortController(); confirmationController.current = controller
+      const pathInput: PathPaymentInput = { address: wallet.address!, from: review.from, to: review.to, amount: review.amount, destMin: fresh.quote.minimumReceived, signal: controller.signal }
+      const result = await transaction.executePathPayment(pathInput, reviewProgress)
       if (!result) return
       if (!result.receivedAmount || !result.confirmedAt) {
         const warning = 'Classic swap confirmed, but Horizon did not return an authoritative path-payment amount. Analytics was not started.'
         const confirmedWithoutParsing: ConfirmedSwap = { fromCode: review.from.code, toCode: review.to.code, sentAmount: result.sentAmount, receivedAmount: null, timestamp: new Date(), hash: result.hash, explorerUrl: `https://stellar.expert/explorer/testnet/tx/${result.hash}`, status: 'success', analyticsStatus: 'not-started', analyticsMessage: warning }
+        pendingConfirmation.current.set(result.hash, { ...pathInput, signal: undefined })
         setHistory((items) => [confirmedWithoutParsing, ...items]); setReview(null); setReviewMessage(''); progress('confirmed', warning)
         clearAmount(); await wallet.refreshAccount(); refreshMarket()
         return
@@ -105,9 +112,27 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
       pendingAnalytics.current.set(result.hash, analytics)
       clearAmount(); await wallet.refreshAccount(); refreshMarket()
       await recordAnalytics(analytics)
-    } finally { inFlight.current = false }
+    } finally { inFlight.current = false; confirmationController.current = null }
   }, [review, wallet, authoritativeQuote, clearAmount, refreshMarket, recordAnalytics])
 
   const retryAnalytics = useCallback(async (hash: string) => { const input = pendingAnalytics.current.get(hash); if (!input || inFlight.current) return; inFlight.current = true; try { await recordAnalytics(input) } finally { inFlight.current = false } }, [recordAnalytics])
-  return { status, message, reviewMessage, review, history, analyticsStatus, analyticsMessage, retryAnalytics, resetDraftState, clearTransientMessages, inProgress: inFlight.current || !['idle', 'confirmed', 'rejected', 'failed', 'timed-out'].includes(status), requestReview, confirm, cancelReview: () => { if (!inFlight.current) { setReview(null); setReviewMessage('') } } }
+  const retryConfirmation = useCallback(async (hash: string) => {
+    const input = pendingConfirmation.current.get(hash)
+    if (!input || inFlight.current) return
+    if (wallet.address !== input.address) { progress('failed', 'Reconnect the same Testnet wallet to recover this confirmation.'); return }
+    inFlight.current = true; confirmationController.current?.abort(); const controller = new AbortController(); confirmationController.current = controller
+    try {
+      progress('validating', 'Re-fetching the confirmed Classic operation from Horizon…')
+      const { recoverConfirmedPathPayment } = await import('../services/pathPayment')
+      const recovered = await recoverConfirmedPathPayment(hash, input, controller.signal)
+      if (!recovered) { progress('confirmed', 'Classic swap remains confirmed; Horizon has not indexed authoritative operation values yet. Retry later.'); return }
+      const analytics: AnalyticsRecordInput = { user: input.address, transactionHash: hash, pairId: PAIR_ID, sentAmount: decimalToI128(recovered.sentAmount), receivedAmount: decimalToI128(recovered.receivedAmount), timestamp: BigInt(Math.floor(recovered.confirmedAt.valueOf() / 1000)) }
+      pendingConfirmation.current.delete(hash); pendingAnalytics.current.set(hash, analytics)
+      setHistory((items) => items.map((item) => item.hash === hash ? { ...item, sentAmount: recovered.sentAmount, receivedAmount: recovered.receivedAmount, timestamp: recovered.confirmedAt, analyticsStatus: 'pending', analyticsMessage: 'Authoritative Horizon values recovered.' } : item))
+      progress('confirmed', 'Classic confirmation recovered. Analytics authorization is next.'); await recordAnalytics(analytics)
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) progress('confirmed', 'Classic swap remains confirmed; Horizon confirmation recovery failed. Retry later.')
+    } finally { inFlight.current = false; confirmationController.current = null }
+  }, [wallet.address, recordAnalytics])
+  return { status, message, reviewMessage, review, history, analyticsStatus, analyticsMessage, retryAnalytics, retryConfirmation, resetDraftState, clearTransientMessages, inProgress: inFlight.current || !['idle', 'confirmed', 'rejected', 'failed', 'timed-out'].includes(status), requestReview, confirm, cancelReview: () => { if (!inFlight.current) { setReview(null); setReviewMessage('') } } }
 }

@@ -9,7 +9,7 @@ vi.mock('../hooks/useOrderbook', () => ({ useOrderbook: () => ({ status: 'empty'
 vi.mock('../hooks/useDirectQuote', () => ({ useDirectQuote: () => ({ quote: null, quotedAt: null }) }))
 vi.mock('../hooks/usePairRegistry', () => ({ usePairRegistry: () => ({ pair: { maxSlippageBps: 500, active: true }, status: 'success', message: 'Pair active', retry: vi.fn(), canSwap: true }) }))
 vi.mock('../hooks/useAnalyticsStats', () => ({ useAnalyticsStats: () => ({ stats: null, status: 'idle', retry: vi.fn() }) }))
-vi.mock('../hooks/useSwapExecution', () => ({ useSwapExecution: () => ({ status: 'idle', message: '', reviewMessage: '', review: null, history: [], analyticsStatus: 'idle', analyticsMessage: '', retryAnalytics: vi.fn(), resetDraftState: resetMock, clearTransientMessages: vi.fn(), inProgress: false, requestReview: vi.fn(), confirm: vi.fn(), cancelReview: vi.fn() }) }))
+vi.mock('../hooks/useSwapExecution', () => ({ useSwapExecution: () => ({ status: 'idle', message: '', reviewMessage: '', review: null, history: [], analyticsStatus: 'idle', analyticsMessage: '', retryAnalytics: vi.fn(), retryConfirmation: vi.fn(), resetDraftState: resetMock, clearTransientMessages: vi.fn(), inProgress: false, requestReview: vi.fn(), confirm: vi.fn(), cancelReview: vi.fn() }) }))
 
 const wallet: WalletViewModel = { status: 'connected', address: 'GTEST', shortAddress: 'GTEST', network: 'TESTNET', message: '', horizonStatus: 'success', xlmBalance: '10', usdcBalance: '4', spendableXlm: '8', spendableUsdc: '4', receivableUsdc: '100', trustlineStatus: 'present', connect: vi.fn(), retryBalance: vi.fn(), refreshAccount: vi.fn() }
 

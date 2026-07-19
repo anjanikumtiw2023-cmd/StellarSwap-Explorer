@@ -3,8 +3,9 @@ import { Asset, BASE_FEE, Horizon, Operation, TransactionBuilder } from '@stella
 import { TESTNET_USDC_ISSUER, type AssetConfig } from '../config/assets'
 import { stellarConfig, isTestnetNetwork } from '../config/stellar'
 import type { SwapExecutionStatus } from '../types/swap'
+import { parseDecimal } from '../utils/decimal'
 
-export type PathPaymentInput = { address: string; from: AssetConfig; to: AssetConfig; amount: string; destMin: string }
+export type PathPaymentInput = { address: string; from: AssetConfig; to: AssetConfig; amount: string; destMin: string; signal?: AbortSignal }
 export type ExecutionProgress = (status: SwapExecutionStatus, message: string) => void
 export type ExecutionResult = { hash: string; sentAmount: string; receivedAmount: string | null; confirmedAt: Date | null }
 export type ConfirmedOperation = { sentAmount: string; receivedAmount: string; confirmedAt: Date }
@@ -14,7 +15,7 @@ export type PathPaymentDeps = {
   sign: typeof signTransaction
   network: typeof getNetwork
   submit: (transaction: ReturnType<typeof TransactionBuilder.fromXDR>) => Promise<{ hash: string }>
-  findReceived: (hash: string, input: PathPaymentInput) => Promise<ConfirmedOperation | null>
+  findReceived: (hash: string, input: PathPaymentInput, signal?: AbortSignal) => Promise<ConfirmedOperation | null>
 }
 
 function sdkAsset(asset: AssetConfig): Asset {
@@ -48,28 +49,43 @@ export function horizonFailureMessage(error: unknown): string {
   if (codes?.transaction === 'tx_insufficient_fee') return 'The network fee is no longer sufficient. Review and rebuild the swap.'
   return 'Horizon could not submit the Testnet swap. No fake success was recorded.'
 }
-type ConfirmedPathOperation = { type: string; amount?: string; source_amount?: string; asset_type?: string; asset_code?: string; asset_issuer?: string; from?: string; to?: string; created_at?: string }
-export function extractConfirmedOperation(records: ConfirmedPathOperation[], input: PathPaymentInput): ConfirmedOperation | null {
-  const operation = records.find((record) => record.type === 'path_payment_strict_send' && record.from === input.address && record.to === input.address && record.source_amount === input.amount)
+export type ConfirmedPathOperation = { type: string; amount?: string; source_amount?: string; asset_type?: string; asset_code?: string; asset_issuer?: string; source_asset_type?: string; source_asset_code?: string; source_asset_issuer?: string; from?: string; to?: string; created_at?: string; transaction_hash?: string; transaction_successful?: boolean }
+export function extractConfirmedOperation(records: ConfirmedPathOperation[], input: PathPaymentInput, transactionHash: string): ConfirmedOperation | null {
+  const expectedSource = parseDecimal(input.amount)
+  const operation = records.find((record) => record.type === 'path_payment_strict_send' && record.transaction_successful === true && record.transaction_hash === transactionHash && record.from === input.address && record.to === input.address && expectedSource !== null && parseDecimal(record.source_amount ?? '') === expectedSource)
   if (!operation?.amount || !operation.created_at) return null
+  const sourceMatches = input.from.type === 'native' ? operation.source_asset_type === 'native' : operation.source_asset_code === input.from.code && operation.source_asset_issuer === input.from.issuer
   const destinationMatches = input.to.type === 'native' ? operation.asset_type === 'native' : operation.asset_code === input.to.code && operation.asset_issuer === input.to.issuer
   const confirmedAt = new Date(operation.created_at)
-  return destinationMatches && !Number.isNaN(confirmedAt.valueOf()) ? { sentAmount: operation.source_amount!, receivedAmount: operation.amount, confirmedAt } : null
+  return sourceMatches && destinationMatches && !Number.isNaN(confirmedAt.valueOf()) ? { sentAmount: operation.source_amount!, receivedAmount: operation.amount, confirmedAt } : null
 }
-export function extractConfirmedDestinationAmount(records: ConfirmedPathOperation[], input: PathPaymentInput): string | null { return extractConfirmedOperation(records, input)?.receivedAmount ?? null }
+export function extractConfirmedDestinationAmount(records: ConfirmedPathOperation[], input: PathPaymentInput, transactionHash: string): string | null { return extractConfirmedOperation(records, input, transactionHash)?.receivedAmount ?? null }
+
+type LoadOperations = () => Promise<ConfirmedPathOperation[]>
+export async function pollConfirmedOperation(load: LoadOperations, hash: string, input: PathPaymentInput, signal?: AbortSignal, delays = [0, 250, 500, 1_000, 2_000]): Promise<ConfirmedOperation | null> {
+  for (const delay of delays) {
+    if (signal?.aborted) throw new DOMException('Confirmation lookup cancelled.', 'AbortError')
+    if (delay > 0) await new Promise<void>((resolve, reject) => { const timer = setTimeout(resolve, delay); signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Confirmation lookup cancelled.', 'AbortError')) }, { once: true }) })
+    try { const confirmed = extractConfirmedOperation(await load(), input, hash); if (confirmed) return confirmed } catch (error) { if (signal?.aborted) throw error }
+  }
+  return null
+}
 
 function defaults(): PathPaymentDeps {
   const server = new Horizon.Server(stellarConfig.horizonUrl)
   return {
     loadAccount: (address) => server.loadAccount(address), sign: signTransaction, network: getNetwork,
     submit: (transaction) => server.submitTransaction(transaction),
-    findReceived: async (hash, input) => {
-      try {
-        const records = await server.operations().forTransaction(hash).call()
-        return extractConfirmedOperation(records.records as unknown as ConfirmedPathOperation[], input)
-      } catch { return null }
-    },
+    findReceived: (hash, input, signal) => pollConfirmedOperation(async () => {
+      const page = await server.operations().forTransaction(hash).limit(200).order('asc').call()
+      return page.records as unknown as ConfirmedPathOperation[]
+    }, hash, input, signal),
   }
+}
+
+export async function recoverConfirmedPathPayment(hash: string, input: PathPaymentInput, signal?: AbortSignal, deps = defaults()): Promise<ConfirmedOperation | null> {
+  if (!/^[0-9a-fA-F]{64}$/.test(hash)) return null
+  return deps.findReceived(hash, input, signal)
 }
 
 export async function executePathPayment(input: PathPaymentInput, progress: ExecutionProgress, deps = defaults()): Promise<ExecutionResult | null> {
@@ -89,7 +105,7 @@ export async function executePathPayment(input: PathPaymentInput, progress: Exec
       progress('submitting', 'Submitting the signed swap to Stellar Testnet…')
       const result = await deps.submit(TransactionBuilder.fromXDR(signed.signedTxXdr, stellarConfig.networkPassphrase))
       if (!/^[0-9a-fA-F]{64}$/.test(result.hash)) throw new Error('unconfirmed_result')
-      const confirmed = await deps.findReceived(result.hash, input)
+      const confirmed = await deps.findReceived(result.hash, input, input.signal)
       return confirmed ? { hash: result.hash, ...confirmed } : { hash: result.hash, sentAmount: input.amount, receivedAmount: null, confirmedAt: null }
     } catch (error) {
       if (isBadSequence(error) && attempt === 0) continue

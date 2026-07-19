@@ -57,7 +57,7 @@ export function SwapCard({ wallet }: { wallet: WalletViewModel }) {
     </section>
     <OrderbookPanel market={market} />
     <AnalyticsPanel analytics={analytics} />
-    <SessionSwapHistory swaps={execution.history} retryAnalytics={(hash) => void execution.retryAnalytics(hash)} retryDisabled={execution.inProgress} />
+    <SessionSwapHistory swaps={execution.history} retryAnalytics={(hash) => void execution.retryAnalytics(hash)} retryConfirmation={(hash) => void execution.retryConfirmation(hash)} retryDisabled={execution.inProgress} />
     {execution.review && wallet.address && <ReviewSwapDialog review={execution.review} address={wallet.address} status={execution.status} message={execution.reviewMessage} onCancel={execution.cancelReview} onConfirm={() => void execution.confirm()} />}
   </>
 }

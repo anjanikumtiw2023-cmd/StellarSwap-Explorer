@@ -6,17 +6,17 @@ import { calculateQuote } from '../services/quote'
 import type { WalletViewModel } from '../types/stellar'
 import { useSwapExecution } from './useSwapExecution'
 
-const { executeMock, fetchMock, directFetchMock, analyticsMock } = vi.hoisted(() => ({ executeMock: vi.fn(), fetchMock: vi.fn(), directFetchMock: vi.fn(), analyticsMock: vi.fn() }))
+const { executeMock, recoverMock, fetchMock, directFetchMock, analyticsMock } = vi.hoisted(() => ({ executeMock: vi.fn(), recoverMock: vi.fn(), fetchMock: vi.fn(), directFetchMock: vi.fn(), analyticsMock: vi.fn() }))
 const book = normalizeOrderbook({ bids: [{ price: '2', amount: '100' }], asks: [{ price: '2.1', amount: '100' }] }, XLM, TESTNET_USDC)
 vi.mock('../services/orderbook', async (original) => ({ ...await original<typeof import('../services/orderbook')>(), fetchOrderbook: fetchMock }))
 vi.mock('../services/directQuote', () => ({ fetchDirectQuote: directFetchMock }))
-vi.mock('../services/pathPayment', () => ({ executePathPayment: (...args: unknown[]) => executeMock(...args) }))
+vi.mock('../services/pathPayment', () => ({ executePathPayment: (...args: unknown[]) => executeMock(...args), recoverConfirmedPathPayment: (...args: unknown[]) => recoverMock(...args) }))
 vi.mock('../services/soroban', () => ({ submitAnalytics: (...args: unknown[]) => analyticsMock(...args), friendlySorobanError: () => 'The swap is confirmed, but analytics failed.' }))
 const wallet: WalletViewModel = { status: 'connected', address: 'GTEST', shortAddress: 'GTEST', network: 'TESTNET', message: '', horizonStatus: 'success', xlmBalance: '10', usdcBalance: '5', spendableXlm: '8', spendableUsdc: '5', receivableUsdc: '1000', trustlineStatus: 'present', connect: vi.fn(), retryBalance: vi.fn(), refreshAccount: vi.fn(async () => undefined) }
 const draft = { from: XLM, to: TESTNET_USDC, amount: '1', slippage: '0.5' as const, quote: calculateQuote('1', book.bids, 50n), quotedAt: new Date() }
 
 describe('useSwapExecution', () => {
-  beforeEach(() => { vi.clearAllMocks(); fetchMock.mockResolvedValue({ ...book, refreshedAt: new Date() }); directFetchMock.mockResolvedValue(draft.quote); executeMock.mockResolvedValue({ hash: 'a'.repeat(64), sentAmount: '1.0000000', receivedAmount: '2.0000000', confirmedAt: new Date('2026-01-01T00:00:00Z') }); analyticsMock.mockResolvedValue({ hash: 'b'.repeat(64), explorerUrl: 'https://stellar.expert/explorer/testnet/tx/' + 'b'.repeat(64), duplicate: false }) })
+  beforeEach(() => { vi.clearAllMocks(); fetchMock.mockResolvedValue({ ...book, refreshedAt: new Date() }); directFetchMock.mockResolvedValue(draft.quote); executeMock.mockResolvedValue({ hash: 'a'.repeat(64), sentAmount: '1.0000000', receivedAmount: '2.0000000', confirmedAt: new Date('2026-01-01T00:00:00Z') }); recoverMock.mockResolvedValue({ sentAmount: '0.1000000', receivedAmount: '0.2193263', confirmedAt: new Date('2026-07-19T07:38:07Z') }); analyticsMock.mockResolvedValue({ hash: 'b'.repeat(64), explorerUrl: 'https://stellar.expert/explorer/testnet/tx/' + 'b'.repeat(64), duplicate: false }) })
   it('refreshes balances/market, clears amount, and adds successful history', async () => {
     const refresh = vi.fn(); const clear = vi.fn(); const { result } = renderHook(() => useSwapExecution(wallet, refresh, clear))
     await act(() => result.current.requestReview(draft)); expect(result.current.review).not.toBeNull()
@@ -73,5 +73,13 @@ describe('useSwapExecution', () => {
     await act(() => result.current.requestReview(draft)); expect(result.current.message).not.toContain('Analytics was not started')
     await act(() => result.current.confirm())
     expect(result.current.status).toBe('confirmed'); expect(result.current.message).toContain('Analytics was not started'); expect(result.current.review).toBeNull(); expect(result.current.history[0].analyticsStatus).toBe('not-started'); expect(analyticsMock).not.toHaveBeenCalled()
+  })
+  it('retries Horizon confirmation and analytics without submitting another Classic swap', async () => {
+    const hash = '9'.repeat(64); executeMock.mockResolvedValueOnce({ hash, sentAmount: '0.1000000', receivedAmount: null, confirmedAt: null })
+    const { result } = renderHook(() => useSwapExecution(wallet, vi.fn(), vi.fn()))
+    await act(() => result.current.requestReview(draft)); await act(() => result.current.confirm()); expect(executeMock).toHaveBeenCalledOnce()
+    await act(() => result.current.retryConfirmation(hash))
+    expect(executeMock).toHaveBeenCalledOnce(); expect(recoverMock).toHaveBeenCalledOnce(); expect(analyticsMock).toHaveBeenCalledOnce()
+    expect(result.current.history[0]).toMatchObject({ sentAmount: '0.1000000', receivedAmount: '0.2193263', analyticsStatus: 'confirmed' })
   })
 })
