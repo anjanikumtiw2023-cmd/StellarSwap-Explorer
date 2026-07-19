@@ -11,7 +11,7 @@ function deps(overrides: Partial<PathPaymentDeps> = {}): PathPaymentDeps {
     loadAccount: vi.fn(async () => new Account(address, '1') as never),
     network: vi.fn(async () => ({ network: 'TESTNET', networkPassphrase: Networks.TESTNET })),
     sign: vi.fn(async (xdr) => ({ signedTxXdr: xdr, signerAddress: address })),
-    submit: vi.fn(async () => ({ hash: 'abc123' })), findReceived: vi.fn(async () => '1.95'), ...overrides,
+    submit: vi.fn(async () => ({ hash: 'a'.repeat(64) })), findReceived: vi.fn(async () => ({ sentAmount: '1.0000000', receivedAmount: '1.95', confirmedAt: new Date('2026-01-01T00:00:00Z') })), ...overrides,
   }
 }
 describe('PathPaymentStrictSend execution', () => {
@@ -33,17 +33,22 @@ describe('PathPaymentStrictSend execution', () => {
     expect(horizonFailureMessage(error)).toContain('slippage-protected minimum')
   })
   it('parses the operation destination amount, never a post-swap account balance', () => {
-    const record = { type: 'path_payment_strict_send', from: address, to: address, source_amount: '1.0000000', asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: TESTNET_USDC.issuer!, amount: '2.1933814' }
+    const record = { type: 'path_payment_strict_send', from: address, to: address, source_amount: '1.0000000', asset_type: 'credit_alphanum4', asset_code: 'USDC', asset_issuer: TESTNET_USDC.issuer!, amount: '2.1933814', created_at: '2026-01-01T00:00:00Z' }
     expect(extractConfirmedDestinationAmount([record], input)).toBe('2.1933814')
     expect(extractConfirmedDestinationAmount([{ ...record, asset_code: 'FAKE' }], input)).toBeNull()
   })
+  it('preserves USDC to XLM destination orientation', () => {
+    const reverse = { address, from: TESTNET_USDC, to: XLM, amount: '2.0000000', destMin: '0.8000000' }
+    const record = { type: 'path_payment_strict_send', from: address, to: address, source_amount: '2.0000000', asset_type: 'native', amount: '0.9123456', created_at: '2026-01-01T00:00:00Z' }
+    expect(extractConfirmedDestinationAmount([record], reverse)).toBe('0.9123456')
+  })
   it('rebuilds and re-signs exactly once for tx_bad_seq', async () => {
-    let calls = 0; const d = deps({ submit: vi.fn(async (_tx: ReturnType<typeof TransactionBuilder.fromXDR>) => { calls += 1; if (calls === 1) throw { response: { data: { extras: { result_codes: { transaction: 'tx_bad_seq' } } } } }; return { hash: 'fresh' } }) })
+    let calls = 0; const d = deps({ submit: vi.fn(async (_tx: ReturnType<typeof TransactionBuilder.fromXDR>) => { calls += 1; if (calls === 1) throw { response: { data: { extras: { result_codes: { transaction: 'tx_bad_seq' } } } } }; return { hash: 'f'.repeat(64) } }) })
     const result = await executePathPayment(input, () => undefined, d)
-    expect(result?.hash).toBe('fresh'); expect(d.loadAccount).toHaveBeenCalledTimes(2); expect(d.sign).toHaveBeenCalledTimes(2); expect(d.submit).toHaveBeenCalledTimes(2)
+    expect(result?.hash).toBe('f'.repeat(64)); expect(d.loadAccount).toHaveBeenCalledTimes(2); expect(d.sign).toHaveBeenCalledTimes(2); expect(d.submit).toHaveBeenCalledTimes(2)
   })
   it('creates a classic transaction rather than exposing XDR', async () => {
-    const d = deps({ submit: vi.fn(async (tx) => { expect(tx).toBeInstanceOf(Transaction); expect(tx.operations[0].type).toBe('pathPaymentStrictSend'); return { hash: 'ok' } }) })
+    const d = deps({ submit: vi.fn(async (tx) => { expect(tx).toBeInstanceOf(Transaction); expect(tx.operations[0].type).toBe('pathPaymentStrictSend'); return { hash: 'b'.repeat(64) } }) })
     await executePathPayment(input, () => undefined, d); expect(d.submit).toHaveBeenCalledOnce()
   })
 })

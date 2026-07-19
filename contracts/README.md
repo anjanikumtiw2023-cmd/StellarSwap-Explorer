@@ -82,3 +82,11 @@ stellar contract build
 ```
 
 Optimized Wasm artifacts are produced under `target/wasm32v1-none/release/`. The committed `Cargo.lock` intentionally retains the Soroban-host-compatible `ed25519-dalek` 2.2.0 resolution.
+
+## Testnet deployment
+
+- Pair Registry: `CDR5SAZRQDFXYRNWTT7PYG4ADYBCVHQGOD4ENUO5QFKGT77VKDW4Y6QB` ([contract](https://stellar.expert/explorer/testnet/contract/CDR5SAZRQDFXYRNWTT7PYG4ADYBCVHQGOD4ENUO5QFKGT77VKDW4Y6QB), [deployment](https://stellar.expert/explorer/testnet/tx/ef6ab62eaf3b52e6e016b03ead1b4d00d956e655aa8649e4f438a025a32ae9e1))
+- Swap Analytics: `CAUH3EZEVDRMMZ7YX4G4FBYKRFXD5QAHIC67ZPDDZLX7QZSPH7CWPS3M` ([contract](https://stellar.expert/explorer/testnet/contract/CAUH3EZEVDRMMZ7YX4G4FBYKRFXD5QAHIC67ZPDDZLX7QZSPH7CWPS3M), [deployment](https://stellar.expert/explorer/testnet/tx/2283c853b0d629b6c93bc24ccaf7cb03985c668036551001258e91179255f260))
+- Registered `XLM_USDC`: [registration transaction](https://stellar.expert/explorer/testnet/tx/6a0b4e67aed3fd9fa23eec30915cd8d063f708fbc0025c2c2c668c01abc21835), using official Testnet USDC issuer `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`.
+
+The frontend reads active state and slippage policy from Pair Registry. Only after Horizon authoritatively confirms a Classic path payment may the user authorize a second Soroban transaction to Swap Analytics, which performs its own inter-contract active-pair check. These transactions are non-atomic: analytics failure never invalidates Classic settlement, and duplicate-safe analytics retry never resubmits the swap.

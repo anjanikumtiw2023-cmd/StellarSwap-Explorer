@@ -1,80 +1,63 @@
 # StellarSwap Explorer
 
-StellarSwap Explorer is a Testnet-first Stellar Classic DEX interface with Soroban-backed pair configuration and user-authorized analytics. The repository separates on-chain metadata and analytics from Classic transaction execution.
+StellarSwap Explorer is a Testnet-only interface for native XLM and official Testnet USDC. Stellar Classic settles swaps with `PathPaymentStrictSend`; two deployed Soroban contracts separately provide pair policy and user-authorized post-settlement analytics.
 
-> **Testnet only:** the frontend rejects Freighter accounts on Public Network or unsupported networks. Do not use production funds or enter a secret key anywhere in this application.
+> **Testnet only:** these assets have no monetary value. The app rejects Public Network, never requests a secret key, and never stores signed XDR or wallet data.
 
-## Current status
+## Architecture and current features
 
-The contract phase is complete:
+```text
+Pair Registry ── active pair + slippage policy ──> Frontend
+      │                                             │
+      └──── active-pair validation ───────┐         ├─ Classic PathPaymentStrictSend ──> Horizon
+                                         v         │
+                                  Swap Analytics <─┘ separate user-authorized record
+```
 
-- `pair_registry` maintains validated supported-pair configuration, status, administration, and a listable pair index.
-- `swap_analytics` stores user-authorized post-swap analytics and validates active pairs through Pair Registry.
-- Classic DEX settlement remains outside Soroban.
+- Contracts: production `pair_registry` and `swap_analytics` contracts with validation, authorization, events, TTL extension, stable errors, and tests.
+- Frontend Phases 1–3: Freighter Testnet connection, balances/trustlines, live orderbook and direct strict-send quotes, review, signing, submission, authoritative Horizon confirmation, and current-session history.
+- Frontend Phase 4: deployed Pair Registry validation and execution gating, registry maximum-slippage enforcement, persistent aggregate stats, and a second Soroban transaction built only from confirmed Horizon values.
 
-Frontend Phase 1 provides:
+Classic settlement and analytics are non-atomic. A confirmed Classic swap remains successful if analytics fails. The UI retains its immutable confirmed amounts, time, user, direction, and hash for **Retry analytics**; retry never repeats the swap.
 
-- Responsive, accessible swap-interface foundation.
-- Freighter installation detection, access request, address display, Testnet validation, and supported wallet-change watching.
-- Connected Testnet account loading through Horizon and native XLM balance display.
-- Friendly disconnected, loading, funded, unfunded, wrong-network, error, and retry states.
-- A non-transactional swap preview. Review and submission are intentionally disabled.
+Swap Analytics stores aggregates and records keyed by `(user, transaction_hash)`. Its current schema cannot reliably enumerate full per-user history without an external indexer, so the UI shows persistent aggregates plus explicitly current-session detail.
 
-Frontend Phase 2 adds verified Testnet asset and market support:
+## Testnet deployment
 
-- Native XLM and official Testnet USDC only. The USDC issuer is `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`.
-- Account trustline detection distinguishes missing, active, unauthorized/frozen, unfunded, loading, and Horizon error states.
-- A missing USDC trustline can be created as a Classic `changeTrust` transaction signed by Freighter and submitted to Testnet Horizon. No secret key is requested or handled.
-- Live XLM/USDC orderbook bids and asks refresh from Horizon every ten seconds, with best prices, spread, depth, and explicit empty/error states.
-- Read-only and pre-submit quotes use Horizon's direct strict-send path result, matching the orderbook and liquidity-pool sources available to `PathPaymentStrictSend`; the separate orderbook panel still shows visible bids and asks only. Decimal-safe arithmetic protects `destMin` and minimum-received calculations.
+| Item | Value | Explorer |
+|---|---|---|
+| Pair Registry | `CDR5SAZRQDFXYRNWTT7PYG4ADYBCVHQGOD4ENUO5QFKGT77VKDW4Y6QB` | [Contract](https://stellar.expert/explorer/testnet/contract/CDR5SAZRQDFXYRNWTT7PYG4ADYBCVHQGOD4ENUO5QFKGT77VKDW4Y6QB) |
+| Pair Registry deployment | `ef6ab62eaf3b52e6e016b03ead1b4d00d956e655aa8649e4f438a025a32ae9e1` | [Transaction](https://stellar.expert/explorer/testnet/tx/ef6ab62eaf3b52e6e016b03ead1b4d00d956e655aa8649e4f438a025a32ae9e1) |
+| Swap Analytics | `CAUH3EZEVDRMMZ7YX4G4FBYKRFXD5QAHIC67ZPDDZLX7QZSPH7CWPS3M` | [Contract](https://stellar.expert/explorer/testnet/contract/CAUH3EZEVDRMMZ7YX4G4FBYKRFXD5QAHIC67ZPDDZLX7QZSPH7CWPS3M) |
+| Swap Analytics deployment | `2283c853b0d629b6c93bc24ccaf7cb03985c668036551001258e91179255f260` | [Transaction](https://stellar.expert/explorer/testnet/tx/2283c853b0d629b6c93bc24ccaf7cb03985c668036551001258e91179255f260) |
+| XLM_USDC registration | `6a0b4e67aed3fd9fa23eec30915cd8d063f708fbc0025c2c2c668c01abc21835` | [Transaction](https://stellar.expert/explorer/testnet/tx/6a0b4e67aed3fd9fa23eec30915cd8d063f708fbc0025c2c2c668c01abc21835) |
 
-Quotes are estimates, not executable swaps or guaranteed prices. The application never invents liquidity: an empty or shallow Testnet orderbook is shown as empty or insufficient rather than replaced with sample values.
+`XLM_USDC` is active with a 500 bps maximum and official Testnet USDC issuer `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`. Swap Analytics calls Pair Registry to require the pair to remain active.
 
-Frontend Phase 3 enables educational Testnet execution:
-
-- Every swap is reviewed with a prominent `TESTNET / NO REAL VALUE` warning and refreshed against the direct XLM/official-USDC orderbook before signing.
-- Swaps use Stellar Classic `PathPaymentStrictSend`: the exact source amount is sent through an empty path (direct orderbook route), while `destMin` provides slippage protection.
-- Freighter signs the transaction and Horizon submits it. A changed account sequence is rebuilt and re-signed once; signed XDR is never blindly resubmitted.
-- XLM Max uses a conservative spendable balance after minimum reserve, account subentries, sponsorships, selling liabilities, and a fee allowance. USDC Max subtracts selling liabilities.
-- Confirmed swaps appear only in current in-memory browser-session history. They are not stored in localStorage and are not permanent analytics.
-- Pair Registry and Swap Analytics remain undeployed, so Phase 3 does not record swaps in Soroban.
-
-Testnet XLM and USDC have no real monetary value. Execution supports only the direct XLM/official-Testnet-USDC pair; arbitrary issuers, Mainnet, routed paths, and order placement are rejected.
-
-No contracts are deployed yet, and the example environment file intentionally contains empty contract IDs.
+Verified Classic swap example: [4bf84dea63cf11808d90ec66a44cf0f533f717742f2c58e241fc332dc830ed53](https://stellar.expert/explorer/testnet/tx/4bf84dea63cf11808d90ec66a44cf0f533f717742f2c58e241fc332dc830ed53).
 
 ## Local development
 
-Requirements: Node.js supported by Vite 8, npm, Rust with the `wasm32v1-none` target, and Stellar CLI 27.
-
 ```sh
 cd frontend
-copy .env.example .env.local
+cp .env.example .env.local
 npm install
 npm run dev
 ```
 
-Use `cp .env.example .env.local` instead of `copy` on macOS or Linux. Then open the local URL printed by Vite and connect Freighter configured for Stellar Testnet.
-
-Frontend verification:
+On Windows, use `copy .env.example .env.local`. Public deployed IDs are in `.env.example`; local environment files remain ignored.
 
 ```sh
+# frontend
 npm test -- --run
 npm run lint
 npm run build
-```
 
-Contract verification:
-
-```sh
-cd contracts
+# contracts
+cd ../contracts
+cargo fmt --all --check
 cargo test
 stellar contract build
 ```
 
-## Future phases
-
-- Load supported pairs from deployed Pair Registry configuration.
-- Deploy contracts and record user-authorized analytics after verified settlement.
-
-Phase 2 can submit only an explicitly approved USDC trustline transaction. It does not submit swaps, place orderbook offers, deploy contracts, record analytics, or request secret keys.
+Future work may add an indexer for complete history, more registry-approved pairs, and richer aggregate presentation. Mainnet, arbitrary assets, secret-key handling, and automatic Classic-swap retries remain out of scope.

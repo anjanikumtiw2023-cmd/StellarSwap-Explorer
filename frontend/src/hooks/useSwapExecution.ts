@@ -9,19 +9,40 @@ import type { ConfirmedSwap, ReviewDetails, SwapExecutionStatus } from '../types
 import type { WalletViewModel } from '../types/stellar'
 import type { Slippage } from '../components/SlippageSelector'
 import { parseDecimal } from '../utils/decimal'
+import { decimalToI128, PAIR_ID } from '../services/contractValues'
+import { friendlySorobanError, submitAnalytics } from '../services/soroban'
+import type { AnalyticsRecordInput, AnalyticsStatus } from '../types/contracts'
 
 type Draft = { from: AssetConfig; to: AssetConfig; amount: string; slippage: Slippage; quote: QuoteResult | null; quotedAt: Date | null }
 function materialChange(oldQuote: QuoteResult, newQuote: QuoteResult): boolean {
   const oldValue = parseDecimal(oldQuote.expectedOutput) ?? 0n; const newValue = parseDecimal(newQuote.expectedOutput) ?? 0n
   return oldValue === 0n || (oldValue > newValue ? oldValue - newValue : newValue - oldValue) * 10_000n / oldValue > 10n
 }
-export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => void, clearAmount: () => void) {
+export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => void, clearAmount: () => void, registryReady = true, analyticsConfirmed?: () => void) {
   const [status, setStatus] = useState<SwapExecutionStatus>('idle')
   const [message, setMessage] = useState('')
   const [review, setReview] = useState<ReviewDetails | null>(null)
   const [history, setHistory] = useState<ConfirmedSwap[]>([])
+  const [analyticsStatus, setAnalyticsStatus] = useState<AnalyticsStatus>('idle')
+  const [analyticsMessage, setAnalyticsMessage] = useState('')
+  const pendingAnalytics = useRef(new Map<string, AnalyticsRecordInput>())
   const inFlight = useRef(false)
   const progress = (next: SwapExecutionStatus, nextMessage: string) => { setStatus(next); setMessage(nextMessage) }
+
+  const recordAnalytics = useCallback(async (input: AnalyticsRecordInput) => {
+    setAnalyticsStatus('preparing'); setAnalyticsMessage('Swap confirmed; preparing analytics recording…')
+    try {
+      const result = await submitAnalytics(input, (next, nextMessage) => { setAnalyticsStatus(next); setAnalyticsMessage(nextMessage) })
+      setAnalyticsStatus('confirmed'); setAnalyticsMessage(result.duplicate ? 'Analytics record already exists on Soroban.' : 'Analytics confirmed on Soroban Testnet.')
+      pendingAnalytics.current.delete(input.transactionHash)
+      setHistory((items) => items.map((item) => item.hash === input.transactionHash ? { ...item, analyticsStatus: 'confirmed', analyticsHash: result.hash || item.analyticsHash, analyticsExplorerUrl: result.explorerUrl || item.analyticsExplorerUrl, analyticsMessage: result.duplicate ? 'Already recorded' : 'Recorded' } : item))
+      analyticsConfirmed?.()
+    } catch (error) {
+      const friendly = friendlySorobanError(error)
+      setAnalyticsStatus('failed'); setAnalyticsMessage(friendly)
+      setHistory((items) => items.map((item) => item.hash === input.transactionHash ? { ...item, analyticsStatus: 'failed', analyticsMessage: friendly } : item))
+    }
+  }, [analyticsConfirmed])
 
   const authoritativeQuote = useCallback(async (draft: Draft) => {
     const book = await fetchOrderbook(draft.from, draft.to)
@@ -31,6 +52,7 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
 
   const requestReview = useCallback(async (draft: Draft) => {
     if (inFlight.current) return
+    if (!registryReady) { progress('failed', 'Pair Registry must confirm an active XLM_USDC pair before swapping.'); return }
     progress('validating', 'Validating account, assets, balance, and trustline…')
     const initial = validateSwap({ wallet, ...draft, inProgress: false })
     if (!initial.valid && !initial.message.includes('stale')) { progress('failed', initial.message); return }
@@ -42,7 +64,7 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
       setReview({ from: draft.from, to: draft.to, amount: draft.amount, slippage: draft.slippage, quote: fresh.quote!, quotedAt: fresh.quotedAt })
       progress('idle', 'Authoritative Testnet quote ready for review.')
     } catch { progress('failed', 'Horizon could not refresh the direct Testnet quote. Please retry.') }
-  }, [wallet, authoritativeQuote])
+  }, [wallet, authoritativeQuote, registryReady])
 
   const confirm = useCallback(async () => {
     if (!review || inFlight.current) return
@@ -60,13 +82,17 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
       const result = await transaction.executePathPayment({ address: wallet.address!, from: review.from, to: review.to, amount: review.amount, destMin: fresh.quote.minimumReceived }, progress)
       if (!result) return
       const confirmed: ConfirmedSwap = {
-        fromCode: review.from.code, toCode: review.to.code, sentAmount: review.amount, receivedAmount: result.receivedAmount,
-        timestamp: new Date(), hash: result.hash, explorerUrl: `https://stellar.expert/explorer/testnet/tx/${result.hash}`, status: 'success',
+        fromCode: review.from.code, toCode: review.to.code, sentAmount: result.sentAmount, receivedAmount: result.receivedAmount,
+        timestamp: result.confirmedAt, hash: result.hash, explorerUrl: `https://stellar.expert/explorer/testnet/tx/${result.hash}`, status: 'success', analyticsStatus: 'pending',
       }
       setHistory((items) => [confirmed, ...items]); setReview(null); progress('confirmed', `TESTNET swap confirmed: ${result.hash}`)
+      const analytics: AnalyticsRecordInput = { user: wallet.address!, transactionHash: result.hash, pairId: PAIR_ID, sentAmount: decimalToI128(result.sentAmount), receivedAmount: decimalToI128(result.receivedAmount), timestamp: BigInt(Math.floor(result.confirmedAt.valueOf() / 1000)) }
+      pendingAnalytics.current.set(result.hash, analytics)
       clearAmount(); await wallet.refreshAccount(); refreshMarket()
+      await recordAnalytics(analytics)
     } finally { inFlight.current = false }
-  }, [review, wallet, authoritativeQuote, clearAmount, refreshMarket])
+  }, [review, wallet, authoritativeQuote, clearAmount, refreshMarket, recordAnalytics])
 
-  return { status, message, review, history, inProgress: inFlight.current || !['idle', 'confirmed', 'rejected', 'failed', 'timed-out'].includes(status), requestReview, confirm, cancelReview: () => { if (!inFlight.current) setReview(null) } }
+  const retryAnalytics = useCallback(async (hash: string) => { const input = pendingAnalytics.current.get(hash); if (!input || inFlight.current) return; inFlight.current = true; try { await recordAnalytics(input) } finally { inFlight.current = false } }, [recordAnalytics])
+  return { status, message, review, history, analyticsStatus, analyticsMessage, retryAnalytics, inProgress: inFlight.current || !['idle', 'confirmed', 'rejected', 'failed', 'timed-out'].includes(status), requestReview, confirm, cancelReview: () => { if (!inFlight.current) setReview(null) } }
 }

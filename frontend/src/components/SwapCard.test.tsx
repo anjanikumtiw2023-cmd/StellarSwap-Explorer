@@ -5,6 +5,8 @@ import type { WalletViewModel } from '../types/stellar'
 import { SwapCard } from './SwapCard'
 
 vi.mock('../hooks/useOrderbook', () => ({ useOrderbook: () => ({ status: 'empty', book: null, message: 'No offers are available for this pair.', retry: vi.fn() }) }))
+vi.mock('../hooks/usePairRegistry', () => ({ usePairRegistry: () => ({ pair: { maxSlippageBps: 500, active: true }, status: 'success', message: 'Pair active', retry: vi.fn(), canSwap: true }) }))
+vi.mock('../hooks/useAnalyticsStats', () => ({ useAnalyticsStats: () => ({ stats: null, status: 'idle', retry: vi.fn() }) }))
 const wallet: WalletViewModel = {
   status: 'connected', address: 'GTEST', shortAddress: 'GTEST', network: 'TESTNET', message: '', horizonStatus: 'success',
   xlmBalance: '10', usdcBalance: '4', spendableXlm: '8', spendableUsdc: '4', receivableUsdc: '1000', trustlineStatus: 'present', connect: vi.fn(), retryBalance: vi.fn(), refreshAccount: vi.fn(),

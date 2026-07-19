@@ -6,14 +6,15 @@ import type { SwapExecutionStatus } from '../types/swap'
 
 export type PathPaymentInput = { address: string; from: AssetConfig; to: AssetConfig; amount: string; destMin: string }
 export type ExecutionProgress = (status: SwapExecutionStatus, message: string) => void
-export type ExecutionResult = { hash: string; receivedAmount: string | null }
+export type ExecutionResult = { hash: string; sentAmount: string; receivedAmount: string; confirmedAt: Date }
+export type ConfirmedOperation = { sentAmount: string; receivedAmount: string; confirmedAt: Date }
 type SourceAccount = Awaited<ReturnType<Horizon.Server['loadAccount']>>
 export type PathPaymentDeps = {
   loadAccount: (address: string) => Promise<SourceAccount>
   sign: typeof signTransaction
   network: typeof getNetwork
   submit: (transaction: ReturnType<typeof TransactionBuilder.fromXDR>) => Promise<{ hash: string }>
-  findReceived: (hash: string, input: PathPaymentInput) => Promise<string | null>
+  findReceived: (hash: string, input: PathPaymentInput) => Promise<ConfirmedOperation | null>
 }
 
 function sdkAsset(asset: AssetConfig): Asset {
@@ -47,13 +48,15 @@ export function horizonFailureMessage(error: unknown): string {
   if (codes?.transaction === 'tx_insufficient_fee') return 'The network fee is no longer sufficient. Review and rebuild the swap.'
   return 'Horizon could not submit the Testnet swap. No fake success was recorded.'
 }
-type ConfirmedPathOperation = { type: string; amount?: string; source_amount?: string; asset_type?: string; asset_code?: string; asset_issuer?: string; from?: string; to?: string }
-export function extractConfirmedDestinationAmount(records: ConfirmedPathOperation[], input: PathPaymentInput): string | null {
+type ConfirmedPathOperation = { type: string; amount?: string; source_amount?: string; asset_type?: string; asset_code?: string; asset_issuer?: string; from?: string; to?: string; created_at?: string }
+export function extractConfirmedOperation(records: ConfirmedPathOperation[], input: PathPaymentInput): ConfirmedOperation | null {
   const operation = records.find((record) => record.type === 'path_payment_strict_send' && record.from === input.address && record.to === input.address && record.source_amount === input.amount)
-  if (!operation?.amount) return null
+  if (!operation?.amount || !operation.created_at) return null
   const destinationMatches = input.to.type === 'native' ? operation.asset_type === 'native' : operation.asset_code === input.to.code && operation.asset_issuer === input.to.issuer
-  return destinationMatches ? operation.amount : null
+  const confirmedAt = new Date(operation.created_at)
+  return destinationMatches && !Number.isNaN(confirmedAt.valueOf()) ? { sentAmount: operation.source_amount!, receivedAmount: operation.amount, confirmedAt } : null
 }
+export function extractConfirmedDestinationAmount(records: ConfirmedPathOperation[], input: PathPaymentInput): string | null { return extractConfirmedOperation(records, input)?.receivedAmount ?? null }
 
 function defaults(): PathPaymentDeps {
   const server = new Horizon.Server(stellarConfig.horizonUrl)
@@ -63,7 +66,7 @@ function defaults(): PathPaymentDeps {
     findReceived: async (hash, input) => {
       try {
         const records = await server.operations().forTransaction(hash).call()
-        return extractConfirmedDestinationAmount(records.records as unknown as ConfirmedPathOperation[], input)
+        return extractConfirmedOperation(records.records as unknown as ConfirmedPathOperation[], input)
       } catch { return null }
     },
   }
@@ -85,12 +88,16 @@ export async function executePathPayment(input: PathPaymentInput, progress: Exec
       if (signed.signerAddress !== input.address) throw new Error('wrong_signer')
       progress('submitting', 'Submitting the signed swap to Stellar Testnet…')
       const result = await deps.submit(TransactionBuilder.fromXDR(signed.signedTxXdr, stellarConfig.networkPassphrase))
-      return { hash: result.hash, receivedAmount: await deps.findReceived(result.hash, input) }
+      if (!/^[0-9a-fA-F]{64}$/.test(result.hash)) throw new Error('unconfirmed_result')
+      const confirmed = await deps.findReceived(result.hash, input)
+      if (!confirmed) throw new Error('unconfirmed_result')
+      return { hash: result.hash, ...confirmed }
     } catch (error) {
       if (isBadSequence(error) && attempt === 0) continue
       if (isTimedOut(error)) progress('timed-out', 'The transaction timed out before submission. Review a fresh quote and try again.')
       else if (error instanceof Error && error.message === 'wrong_network') progress('failed', 'Freighter must remain on Stellar Testnet.')
       else if (error instanceof Error && error.message === 'wrong_signer') progress('failed', 'Freighter returned a different signer. Reconnect the intended Testnet account.')
+      else if (error instanceof Error && error.message === 'unconfirmed_result') progress('failed', 'Horizon did not return an authoritative confirmed path-payment result. Analytics was not started.')
       else progress('failed', isBadSequence(error) ? 'The account sequence changed again. Please retry.' : horizonFailureMessage(error))
       return null
     }

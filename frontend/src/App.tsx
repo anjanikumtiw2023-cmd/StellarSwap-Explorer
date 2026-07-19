@@ -2,11 +2,13 @@ import './App.css'
 import { SwapCard } from './components/SwapCard'
 import { WalletPanel } from './components/WalletPanel'
 import { TrustlineStatus } from './components/TrustlineStatus'
-import { stellarConfig } from './config/stellar'
+import { stellarConfig, stellarConfigErrors } from './config/stellar'
 import { useFreighterWallet } from './wallet/useFreighterWallet'
 
 function App() {
   const wallet = useFreighterWallet()
+
+  if (stellarConfigErrors.length) return <main id="main"><section className="card configuration-error" role="alert"><p className="card-kicker">Configuration blocked</p><h1>Testnet configuration is invalid</h1><p>{stellarConfigErrors.join(' ')}</p><p>Swap execution and analytics are disabled.</p></section></main>
 
   return (
     <div className="app-shell">
@@ -39,6 +41,7 @@ function App() {
         <section className="connection-strip" aria-label="Service status">
           <div><span className="status-dot" /><span><small>Network</small><strong>Stellar Testnet</strong></span></div>
           <div><span className="status-dot" /><span><small>Horizon connection</small><strong>{wallet.horizonStatus === 'error' ? 'Unavailable' : 'Ready'}</strong></span></div>
+          <div><span className="status-dot" /><span><small>Soroban RPC</small><strong>Configured</strong></span></div>
           <div className="endpoint"><small>Endpoint</small><strong>{stellarConfig.horizonUrl.replace('https://', '')}</strong></div>
         </section>
       </main>
