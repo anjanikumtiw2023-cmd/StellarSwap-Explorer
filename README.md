@@ -1,4 +1,4 @@
-# StellarSwap Explorer
+<img width="1170" height="9948" alt="stellar-swap-explorer vercel app_(iPhone 12 Pro)" src="https://github.com/user-attachments/assets/2c76ad1a-a5ec-453d-bd91-c2a628232d1f" /># StellarSwap Explorer
 
 StellarSwap Explorer is a Testnet-only interface for native XLM and official Testnet USDC. Stellar Classic settles swaps with `PathPaymentStrictSend`; two deployed Soroban contracts separately provide pair policy and user-authorized post-settlement analytics.
 
@@ -42,6 +42,26 @@ Swap Analytics stores aggregates and records keyed by `(user, transaction_hash)`
 | Swap Analytics | `CAUH3EZEVDRMMZ7YX4G4FBYKRFXD5QAHIC67ZPDDZLX7QZSPH7CWPS3M` | [Contract](https://stellar.expert/explorer/testnet/contract/CAUH3EZEVDRMMZ7YX4G4FBYKRFXD5QAHIC67ZPDDZLX7QZSPH7CWPS3M) |
 | Swap Analytics deployment | `2283c853b0d629b6c93bc24ccaf7cb03985c668036551001258e91179255f260` | [Transaction](https://stellar.expert/explorer/testnet/tx/2283c853b0d629b6c93bc24ccaf7cb03985c668036551001258e91179255f260) |
 | XLM_USDC registration | `6a0b4e67aed3fd9fa23eec30915cd8d063f708fbc0025c2c2c668c01abc21835` | [Transaction](https://stellar.expert/explorer/testnet/tx/6a0b4e67aed3fd9fa23eec30915cd8d063f708fbc0025c2c2c668c01abc21835) |
+
+## Screenshots
+
+### Production Desktop
+
+<!-- Drag and drop the production desktop screenshot below this line -->
+
+
+### Mobile Responsive UI
+
+<img width="1170" height="9948" alt="stellar-swap-explorer vercel app_(iPhone 12 Pro)" src="https://github.com/user-attachments/assets/c87e1450-e553-41c6-bbf4-1e3be172ef19" />
+
+
+
+
+### GitHub Actions CI
+
+<img width="1885" height="815" alt="Screenshot 2026-07-19 142147" src="https://github.com/user-attachments/assets/1954ffa0-85eb-46e3-84c4-f98f7d013497" />
+
+
 
 `XLM_USDC` is active with a 500 bps maximum and official Testnet USDC issuer `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`. Swap Analytics calls Pair Registry to require the pair to remain active.
 
