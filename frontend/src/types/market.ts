@@ -6,6 +6,6 @@ export type OrderbookSnapshot = {
   bestBid: string | null; bestAsk: string | null; spread: string | null; depth: string; refreshedAt: Date
 }
 export type QuoteResult = {
-  expectedOutput: string; averagePrice: string; bestPrice: string; priceImpactBps: bigint
+  expectedOutput: string; averagePrice: string; bestPrice: string | null; priceImpactBps: bigint | null
   minimumReceived: string; insufficientLiquidity: boolean; consumedInput: string
 }

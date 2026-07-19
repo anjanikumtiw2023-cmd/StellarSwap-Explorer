@@ -28,6 +28,11 @@ describe('PathPaymentStrictSend execution', () => {
     const d = deps({ submit: vi.fn(async () => { throw new Error('transport detail') }) }); const states: SwapExecutionStatus[] = []
     await executePathPayment(input, (state) => states.push(state), d); expect(states.at(-1)).toBe('failed')
   })
+  it('returns confirmed-but-unparsed only after successful submission', async () => {
+    const d = deps({ findReceived: vi.fn(async () => null) }); const states: SwapExecutionStatus[] = []
+    const result = await executePathPayment(input, (state) => states.push(state), d)
+    expect(result).toMatchObject({ hash: 'a'.repeat(64), receivedAmount: null, confirmedAt: null }); expect(states).not.toContain('failed'); expect(d.submit).toHaveBeenCalledOnce()
+  })
   it('maps Horizon result codes to friendly messages', () => {
     const error = { response: { data: { extras: { result_codes: { operations: ['op_under_destmin'] } } } } }
     expect(horizonFailureMessage(error)).toContain('slippage-protected minimum')

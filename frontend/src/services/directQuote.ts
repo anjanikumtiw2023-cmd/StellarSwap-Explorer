@@ -13,9 +13,12 @@ export function normalizeDirectQuote(record: PathRecord, from: AssetConfig, to: 
   const sourceMatches = from.type === 'native' ? record.source_asset_type === 'native' : record.source_asset_code === from.code && record.source_asset_issuer === from.issuer
   const destinationMatches = to.type === 'native' ? record.destination_asset_type === 'native' : record.destination_asset_code === to.code && record.destination_asset_issuer === to.issuer
   if (!input || !output || input <= 0n || output <= 0n || record.path.length !== 0 || !sourceMatches || !destinationMatches || from.id === to.id) return null
-  const average = divideScaled(output, input); const best = parseDecimal(bestDisplayedPrice ?? '') ?? average
-  const impact = best === 0n ? 0n : (average > best ? average - best : best - average) * 10_000n / best
-  return { expectedOutput: formatDecimal(output), averagePrice: formatDecimal(average), bestPrice: formatDecimal(best), priceImpactBps: impact, minimumReceived: formatDecimal(output * (10_000n - slippageBps) / 10_000n), insufficientLiquidity: false, consumedInput: formatDecimal(input) }
+  const average = divideScaled(output, input)
+  // Horizon strict-send paths may combine orderbook offers and liquidity pools. The
+  // response does not expose a compatible pre-trade reference price, so comparing
+  // its blended result with an orderbook-only best bid would invent price impact.
+  const displayed = parseDecimal(bestDisplayedPrice ?? '')
+  return { expectedOutput: formatDecimal(output), averagePrice: formatDecimal(average), bestPrice: displayed ? formatDecimal(displayed) : null, priceImpactBps: null, minimumReceived: formatDecimal(output * (10_000n - slippageBps) / 10_000n), insufficientLiquidity: false, consumedInput: formatDecimal(input) }
 }
 export async function fetchDirectQuote(from: AssetConfig, to: AssetConfig, amount: string, slippageBps: bigint, bestDisplayedPrice?: string | null, signal?: AbortSignal): Promise<QuoteResult | null> {
   const params = new URLSearchParams({ ...assetParams(from), source_amount: amount, destination_assets: destination(to) })

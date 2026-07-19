@@ -17,8 +17,8 @@ export function ReviewSwapDialog({ review, address, status, message, onCancel, o
       <dl>
         <div><dt>From</dt><dd>{review.amount} {review.from.code}</dd></div><div><dt>To</dt><dd>{review.to.code}</dd></div>
         <div><dt>Expected output</dt><dd>{review.quote.expectedOutput} {review.to.code}</dd></div><div><dt>Minimum received</dt><dd>{review.quote.minimumReceived} {review.to.code}</dd></div>
-        <div><dt>Slippage</dt><dd>{review.slippage}%</dd></div><div><dt>Average price</dt><dd>{review.quote.averagePrice}</dd></div>
-        <div><dt>Price impact</dt><dd>{Number(review.quote.priceImpactBps) / 100}%</dd></div><div><dt>Network fee</dt><dd>0.0000100 XLM estimated</dd></div>
+        <div><dt>Slippage</dt><dd>{review.slippage}%</dd></div><div><dt>Average price</dt><dd>{review.quote.averagePrice} {review.to.code} per {review.from.code}</dd></div>
+        <div><dt>Price impact</dt><dd>{review.quote.priceImpactBps === null ? 'Unavailable' : `${Number(review.quote.priceImpactBps) / 100}%`}</dd></div><div><dt>Network fee</dt><dd>0.0000100 XLM estimated</dd></div>
         <div><dt>Wallet</dt><dd>{shortenAddress(address)}</dd></div><div><dt>Route</dt><dd>Direct {review.from.code} → {review.to.code}</dd></div>
       </dl>
       {message && <p aria-live="assertive" className="dialog-status">{message}</p>}

@@ -6,7 +6,7 @@ import type { SwapExecutionStatus } from '../types/swap'
 
 export type PathPaymentInput = { address: string; from: AssetConfig; to: AssetConfig; amount: string; destMin: string }
 export type ExecutionProgress = (status: SwapExecutionStatus, message: string) => void
-export type ExecutionResult = { hash: string; sentAmount: string; receivedAmount: string; confirmedAt: Date }
+export type ExecutionResult = { hash: string; sentAmount: string; receivedAmount: string | null; confirmedAt: Date | null }
 export type ConfirmedOperation = { sentAmount: string; receivedAmount: string; confirmedAt: Date }
 type SourceAccount = Awaited<ReturnType<Horizon.Server['loadAccount']>>
 export type PathPaymentDeps = {
@@ -90,14 +90,12 @@ export async function executePathPayment(input: PathPaymentInput, progress: Exec
       const result = await deps.submit(TransactionBuilder.fromXDR(signed.signedTxXdr, stellarConfig.networkPassphrase))
       if (!/^[0-9a-fA-F]{64}$/.test(result.hash)) throw new Error('unconfirmed_result')
       const confirmed = await deps.findReceived(result.hash, input)
-      if (!confirmed) throw new Error('unconfirmed_result')
-      return { hash: result.hash, ...confirmed }
+      return confirmed ? { hash: result.hash, ...confirmed } : { hash: result.hash, sentAmount: input.amount, receivedAmount: null, confirmedAt: null }
     } catch (error) {
       if (isBadSequence(error) && attempt === 0) continue
       if (isTimedOut(error)) progress('timed-out', 'The transaction timed out before submission. Review a fresh quote and try again.')
       else if (error instanceof Error && error.message === 'wrong_network') progress('failed', 'Freighter must remain on Stellar Testnet.')
       else if (error instanceof Error && error.message === 'wrong_signer') progress('failed', 'Freighter returned a different signer. Reconnect the intended Testnet account.')
-      else if (error instanceof Error && error.message === 'unconfirmed_result') progress('failed', 'Horizon did not return an authoritative confirmed path-payment result. Analytics was not started.')
       else progress('failed', isBadSequence(error) ? 'The account sequence changed again. Please retry.' : horizonFailureMessage(error))
       return null
     }

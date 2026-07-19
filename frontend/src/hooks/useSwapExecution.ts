@@ -21,6 +21,7 @@ function materialChange(oldQuote: QuoteResult, newQuote: QuoteResult): boolean {
 export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => void, clearAmount: () => void, registryReady = true, analyticsConfirmed?: () => void) {
   const [status, setStatus] = useState<SwapExecutionStatus>('idle')
   const [message, setMessage] = useState('')
+  const [reviewMessage, setReviewMessage] = useState('')
   const [review, setReview] = useState<ReviewDetails | null>(null)
   const [history, setHistory] = useState<ConfirmedSwap[]>([])
   const [analyticsStatus, setAnalyticsStatus] = useState<AnalyticsStatus>('idle')
@@ -28,6 +29,11 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
   const pendingAnalytics = useRef(new Map<string, AnalyticsRecordInput>())
   const inFlight = useRef(false)
   const progress = (next: SwapExecutionStatus, nextMessage: string) => { setStatus(next); setMessage(nextMessage) }
+  const clearTransientMessages = useCallback(() => {
+    if (inFlight.current) return
+    setStatus('idle'); setMessage(''); setReviewMessage(''); setAnalyticsStatus('idle'); setAnalyticsMessage('')
+  }, [])
+  const resetDraftState = useCallback(() => { if (!inFlight.current) { setReview(null); clearTransientMessages() } }, [clearTransientMessages])
 
   const recordAnalytics = useCallback(async (input: AnalyticsRecordInput) => {
     setAnalyticsStatus('preparing'); setAnalyticsMessage('Swap confirmed; preparing analytics recording…')
@@ -52,6 +58,7 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
 
   const requestReview = useCallback(async (draft: Draft) => {
     if (inFlight.current) return
+    setReview(null); clearTransientMessages()
     if (!registryReady) { progress('failed', 'Pair Registry must confirm an active XLM_USDC pair before swapping.'); return }
     progress('validating', 'Validating account, assets, balance, and trustline…')
     const initial = validateSwap({ wallet, ...draft, inProgress: false })
@@ -62,25 +69,33 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
       const validated = validateSwap({ wallet, ...draft, ...fresh, inProgress: false })
       if (!validated.valid) { progress('failed', validated.message); return }
       setReview({ from: draft.from, to: draft.to, amount: draft.amount, slippage: draft.slippage, quote: fresh.quote!, quotedAt: fresh.quotedAt })
-      progress('idle', 'Authoritative Testnet quote ready for review.')
+      progress('idle', 'Authoritative Testnet quote ready for review.'); setReviewMessage('')
     } catch { progress('failed', 'Horizon could not refresh the direct Testnet quote. Please retry.') }
-  }, [wallet, authoritativeQuote, registryReady])
+  }, [wallet, authoritativeQuote, registryReady, clearTransientMessages])
 
   const confirm = useCallback(async () => {
     if (!review || inFlight.current) return
     inFlight.current = true
     try {
-      progress('refreshing-quote', 'Checking the quote again before submission…')
+      const reviewProgress = (next: SwapExecutionStatus, nextMessage: string) => { progress(next, nextMessage); setReviewMessage(nextMessage) }
+      reviewProgress('refreshing-quote', 'Checking the quote again before submission…')
       const fresh = await authoritativeQuote(review)
-      if (!fresh.quote || !isQuoteFresh(fresh.quotedAt)) { progress('failed', 'The authoritative quote is unavailable or stale.'); return }
+      if (!fresh.quote || !isQuoteFresh(fresh.quotedAt)) { reviewProgress('failed', 'The authoritative quote is unavailable or stale.'); return }
       if (materialChange(review.quote, fresh.quote)) {
         setReview({ ...review, quote: fresh.quote, quotedAt: fresh.quotedAt })
-        progress('idle', 'The quote changed materially. Review the updated amounts and confirm again.')
+        reviewProgress('idle', 'The quote changed materially. Review the updated amounts and confirm again.')
         return
       }
       const transaction = await import('../services/pathPayment')
-      const result = await transaction.executePathPayment({ address: wallet.address!, from: review.from, to: review.to, amount: review.amount, destMin: fresh.quote.minimumReceived }, progress)
+      const result = await transaction.executePathPayment({ address: wallet.address!, from: review.from, to: review.to, amount: review.amount, destMin: fresh.quote.minimumReceived }, reviewProgress)
       if (!result) return
+      if (!result.receivedAmount || !result.confirmedAt) {
+        const warning = 'Classic swap confirmed, but Horizon did not return an authoritative path-payment amount. Analytics was not started.'
+        const confirmedWithoutParsing: ConfirmedSwap = { fromCode: review.from.code, toCode: review.to.code, sentAmount: result.sentAmount, receivedAmount: null, timestamp: new Date(), hash: result.hash, explorerUrl: `https://stellar.expert/explorer/testnet/tx/${result.hash}`, status: 'success', analyticsStatus: 'not-started', analyticsMessage: warning }
+        setHistory((items) => [confirmedWithoutParsing, ...items]); setReview(null); setReviewMessage(''); progress('confirmed', warning)
+        clearAmount(); await wallet.refreshAccount(); refreshMarket()
+        return
+      }
       const confirmed: ConfirmedSwap = {
         fromCode: review.from.code, toCode: review.to.code, sentAmount: result.sentAmount, receivedAmount: result.receivedAmount,
         timestamp: result.confirmedAt, hash: result.hash, explorerUrl: `https://stellar.expert/explorer/testnet/tx/${result.hash}`, status: 'success', analyticsStatus: 'pending',
@@ -94,5 +109,5 @@ export function useSwapExecution(wallet: WalletViewModel, refreshMarket: () => v
   }, [review, wallet, authoritativeQuote, clearAmount, refreshMarket, recordAnalytics])
 
   const retryAnalytics = useCallback(async (hash: string) => { const input = pendingAnalytics.current.get(hash); if (!input || inFlight.current) return; inFlight.current = true; try { await recordAnalytics(input) } finally { inFlight.current = false } }, [recordAnalytics])
-  return { status, message, review, history, analyticsStatus, analyticsMessage, retryAnalytics, inProgress: inFlight.current || !['idle', 'confirmed', 'rejected', 'failed', 'timed-out'].includes(status), requestReview, confirm, cancelReview: () => { if (!inFlight.current) setReview(null) } }
+  return { status, message, reviewMessage, review, history, analyticsStatus, analyticsMessage, retryAnalytics, resetDraftState, clearTransientMessages, inProgress: inFlight.current || !['idle', 'confirmed', 'rejected', 'failed', 'timed-out'].includes(status), requestReview, confirm, cancelReview: () => { if (!inFlight.current) { setReview(null); setReviewMessage('') } } }
 }
