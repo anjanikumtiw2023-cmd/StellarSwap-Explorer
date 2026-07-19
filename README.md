@@ -2,7 +2,18 @@
 
 StellarSwap Explorer is a Testnet-only interface for native XLM and official Testnet USDC. Stellar Classic settles swaps with `PathPaymentStrictSend`; two deployed Soroban contracts separately provide pair policy and user-authorized post-settlement analytics.
 
+## [Open the Live Demo](https://stellar-swap-explorer.vercel.app)
+
 > **Testnet only:** these assets have no monetary value. The app rejects Public Network, never requests a secret key, and never stores signed XDR or wallet data.
+
+## Production deployment status
+
+- Production frontend deployed on Vercel: [stellar-swap-explorer.vercel.app](https://stellar-swap-explorer.vercel.app).
+- Stellar Testnet only; Mainnet is intentionally unsupported.
+- Freighter provides public-account access and user-authorized Testnet signing without exposing secret keys.
+- Stellar Classic DEX swaps execute as slippage-protected `PathPaymentStrictSend` transactions through Horizon.
+- The deployed Pair Registry supplies active-pair and slippage policy; the deployed Swap Analytics contract records separate, user-authorized post-settlement analytics.
+- Classic settlement and Soroban analytics remain separate, non-atomic transactions.
 
 ## Architecture and current features
 
@@ -46,6 +57,19 @@ npm run dev
 ```
 
 On Windows, use `copy .env.example .env.local`. Public deployed IDs are in `.env.example`; local environment files remain ignored.
+
+### Vercel configuration
+
+Set the Vercel project root directory to `frontend`, use `npm run build`, and publish `dist`. Configure the same public `VITE_*` values documented in [`frontend/.env.example`](frontend/.env.example):
+
+- `VITE_STELLAR_NETWORK`
+- `VITE_STELLAR_NETWORK_PASSPHRASE`
+- `VITE_HORIZON_URL`
+- `VITE_SOROBAN_RPC_URL`
+- `VITE_PAIR_REGISTRY_CONTRACT_ID`
+- `VITE_SWAP_ANALYTICS_CONTRACT_ID`
+
+These variables contain public Testnet endpoints, the Testnet passphrase, and public contract IDs—not credentials. Never add secret keys, signed XDR, wallet data, or local `.env` contents to Vercel or source control.
 
 ```sh
 # frontend
