@@ -98,5 +98,3 @@ cargo fmt --all --check
 cargo test
 stellar contract build
 ```
-
-Future work may add an indexer for complete history, more registry-approved pairs, and richer aggregate presentation. Mainnet, arbitrary assets, secret-key handling, and automatic Classic-swap retries remain out of scope.
